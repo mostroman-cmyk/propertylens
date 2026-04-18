@@ -12,15 +12,22 @@ async function seed(client) {
 
   try {
     await client.query('BEGIN');
-    await client.query('DELETE FROM transactions');
-    await client.query('DELETE FROM tenants');
-    await client.query('DELETE FROM properties');
 
+    console.log('[seed] Clearing existing data...');
+    await client.query('DELETE FROM transactions');
+    console.log('[seed] Cleared transactions');
+    await client.query('DELETE FROM tenants');
+    console.log('[seed] Cleared tenants');
+    await client.query('DELETE FROM properties');
+    console.log('[seed] Cleared properties');
+
+    console.log('[seed] Inserting properties...');
     const prop = async (name, address) => {
       const { rows } = await client.query(
         'INSERT INTO properties (name, address) VALUES ($1, $2) RETURNING id',
         [name, address]
       );
+      console.log(`[seed]   + Property: ${name} (id=${rows[0].id})`);
       return rows[0].id;
     };
 
@@ -29,10 +36,14 @@ async function seed(client) {
     const singing = await prop('8971 Singing Wood Wy Duplex', '8971 Singing Wood Wy, Santee CA 92071');
     const jeff    = await prop('2618 Jefferson St Duplex',    '2618 Jefferson St, Carlsbad CA 92008');
 
-    const tenant = (pid, name, unit, bb, rent) => client.query(
-      'INSERT INTO tenants (property_id, name, unit, bedrooms_bathrooms, monthly_rent) VALUES ($1, $2, $3, $4, $5)',
-      [pid, name, unit, bb, rent]
-    );
+    console.log('[seed] Inserting tenants...');
+    const tenant = async (pid, name, unit, bb, rent) => {
+      await client.query(
+        'INSERT INTO tenants (property_id, name, unit, bedrooms_bathrooms, monthly_rent) VALUES ($1, $2, $3, $4, $5)',
+        [pid, name, unit, bb, rent]
+      );
+      console.log(`[seed]   + Tenant: ${name} — Unit ${unit} — ${bb} — $${rent.toFixed(2)}/mo`);
+    };
 
     await tenant(jamacha, 'Cheo',                    '1154', '2 Bedroom 1 Bath', 2226.00);
     await tenant(jamacha, 'Carillo Carillo',          '1156', '3 Bedroom 1 Bath', 2423.00);
@@ -44,7 +55,7 @@ async function seed(client) {
     await tenant(jeff,    'Daisy Durant',             'B',    '1 Bedroom 1 Bath', 2000.00);
 
     await client.query('COMMIT');
-    console.log('[seed] Database seeded — 4 properties, 8 tenants, $20,513/mo total rent');
+    console.log('[seed] Done — 4 properties, 8 tenants, $20,513.00/mo total rent');
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('[seed] Seed failed:', err.message);

@@ -46,13 +46,7 @@ async function start() {
 
   try {
     await migrate();
-    const { rows } = await db.query('SELECT COUNT(*) FROM properties');
-    if (parseInt(rows[0].count, 10) === 0) {
-      console.log('[startup] No properties found — running initial seed...');
-      await seed();
-    } else {
-      console.log('[startup] Properties exist, skipping seed');
-    }
+    await seed();
   } catch (err) {
     console.error('[startup] Database setup failed — server is running but DB may be unavailable.');
     console.error('[startup] Full error:', err);
