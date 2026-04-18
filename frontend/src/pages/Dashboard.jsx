@@ -6,37 +6,86 @@ export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [connections, setConnections] = useState([]);
+  const [connectionAccounts, setConnectionAccounts] = useState({}); // { connId: [plaidAccount] }
+  const [pendingSelections, setPendingSelections] = useState({}); // { connId: [account_id] }
+  const [savingAccounts, setSavingAccounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [sendingEmail, setSendingEmail] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
 
-  const fetchConnections = () =>
-    api.get('/plaid/connections').then((r) => setConnections(r.data));
-
   const fetchTransactions = useCallback(() =>
     getTransactions().then(setTransactions), []);
+
+  const fetchAccountsForConnections = useCallback(async (conns) => {
+    const accountResults = {};
+    const selectionResults = {};
+    await Promise.all(conns.map(async (conn) => {
+      try {
+        const { data } = await api.get(`/plaid/accounts/${conn.id}`);
+        accountResults[conn.id] = data;
+        selectionResults[conn.id] = conn.enabled_account_ids || [];
+      } catch {
+        accountResults[conn.id] = [];
+        selectionResults[conn.id] = conn.enabled_account_ids || [];
+      }
+    }));
+    setConnectionAccounts(prev => ({ ...prev, ...accountResults }));
+    setPendingSelections(prev => ({ ...prev, ...selectionResults }));
+  }, []);
+
+  const fetchConnections = useCallback(async () => {
+    const { data } = await api.get('/plaid/connections');
+    setConnections(data);
+    if (data.length > 0) await fetchAccountsForConnections(data);
+    return data;
+  }, [fetchAccountsForConnections]);
 
   useEffect(() => {
     Promise.all([getTenants(), getTransactions(), fetchConnections()])
       .then(([t, tx]) => { setTenants(t); setTransactions(tx); })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
-  }, []);
+  }, [fetchConnections]);
 
-  const handleBankConnected = (institutionName) => {
-    setSyncResult({ message: `${institutionName} connected! Syncing transactions...`, type: 'info' });
-    fetchConnections();
-    // Transactions will auto-sync on the backend; reload them after a short delay
-    setTimeout(() => fetchTransactions().then(() =>
-      setSyncResult({ message: `${institutionName} connected and transactions synced.`, type: 'success' })
-    ), 4000);
+  const handleBankConnected = async (institutionName) => {
+    setSyncResult({ message: `${institutionName} connected! Select which accounts to sync in Account Settings below.`, type: 'info' });
+    await fetchConnections();
+  };
+
+  const handleAccountToggle = (connId, accountId) => {
+    setPendingSelections(prev => {
+      const current = prev[connId] || [];
+      const updated = current.includes(accountId)
+        ? current.filter(id => id !== accountId)
+        : [...current, accountId];
+      return { ...prev, [connId]: updated };
+    });
+  };
+
+  const handleSaveAccounts = async (connId) => {
+    setSavingAccounts(prev => ({ ...prev, [connId]: true }));
+    try {
+      const account_ids = pendingSelections[connId] || [];
+      await api.put(`/plaid/connections/${connId}/accounts`, { account_ids });
+      setConnections(prev => prev.map(c => c.id === connId ? { ...c, enabled_account_ids: account_ids } : c));
+      setSyncResult({ message: 'Account selection saved. Click Sync Transactions to import.', type: 'success' });
+    } catch {
+      setSyncResult({ message: 'Failed to save account selection.', type: 'error' });
+    } finally {
+      setSavingAccounts(prev => ({ ...prev, [connId]: false }));
+    }
   };
 
   const handleSync = async () => {
     if (connections.length === 0) {
       setSyncResult({ message: 'No bank accounts connected yet. Click "Connect Bank Account" first.', type: 'warn' });
+      return;
+    }
+    const unconfigured = connections.filter(c => !c.enabled_account_ids?.length);
+    if (unconfigured.length > 0) {
+      setSyncResult({ message: `Select accounts to sync in Account Settings below (${unconfigured.map(c => c.institution_name).join(', ')}).`, type: 'warn' });
       return;
     }
     setSyncing(true);
@@ -103,18 +152,10 @@ export default function Dashboard() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
         <h1 style={{ margin: 0 }}>Dashboard</h1>
         <div style={{ display: 'flex', gap: 10 }}>
-          <button
-            className="btn-secondary"
-            onClick={handleTestEmail}
-            disabled={sendingEmail}
-          >
+          <button className="btn-secondary" onClick={handleTestEmail} disabled={sendingEmail}>
             {sendingEmail ? 'Sending...' : 'Test Email'}
           </button>
-          <button
-            className="btn-secondary"
-            onClick={handleSync}
-            disabled={syncing}
-          >
+          <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
             {syncing ? 'Syncing...' : 'Sync Transactions'}
           </button>
           <ConnectBank onSuccess={handleBankConnected} />
@@ -122,27 +163,8 @@ export default function Dashboard() {
       </div>
 
       {syncResult && (
-        <div style={{
-          ...bannerColors[syncResult.type],
-          padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.9rem'
-        }}>
+        <div style={{ ...bannerColors[syncResult.type], padding: '10px 16px', borderRadius: 8, marginBottom: 16, fontSize: '0.9rem' }}>
           {syncResult.message}
-        </div>
-      )}
-
-      {connections.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <h2>Connected Accounts</h2>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            {connections.map((c) => (
-              <div key={c.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 10, padding: '12px 18px', fontSize: '0.9rem' }}>
-                <div style={{ fontWeight: 600 }}>{c.institution_name}</div>
-                <div style={{ color: '#888', fontSize: '0.78rem', marginTop: 2 }}>
-                  Connected {new Date(c.created_at).toLocaleDateString()}
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       )}
 
@@ -169,6 +191,77 @@ export default function Dashboard() {
         </div>
       </div>
 
+      {connections.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h2>Account Settings</h2>
+          <p style={{ color: '#888', fontSize: '0.9rem', marginTop: -8, marginBottom: 12 }}>
+            Choose which accounts to include when syncing transactions.
+          </p>
+          {connections.map(conn => {
+            const accounts = connectionAccounts[conn.id];
+            const selected = pendingSelections[conn.id] || [];
+            const savedIds = conn.enabled_account_ids || [];
+            const isSaving = savingAccounts[conn.id];
+            const selectionChanged = JSON.stringify([...selected].sort()) !== JSON.stringify([...savedIds].sort());
+
+            return (
+              <div key={conn.id} className="card" style={{ marginBottom: 12 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ fontWeight: 600, fontSize: '1rem' }}>{conn.institution_name}</div>
+                  <div style={{ fontSize: '0.8rem', color: '#888' }}>
+                    Connected {new Date(conn.created_at).toLocaleDateString()}
+                  </div>
+                </div>
+
+                {!accounts ? (
+                  <div style={{ color: '#888', fontSize: '0.85rem' }}>Loading accounts...</div>
+                ) : accounts.length === 0 ? (
+                  <div style={{ color: '#dc2626', fontSize: '0.85rem' }}>Could not load accounts from Plaid.</div>
+                ) : (
+                  <>
+                    {accounts.map(acct => (
+                      <label key={acct.account_id} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(acct.account_id)}
+                          onChange={() => handleAccountToggle(conn.id, acct.account_id)}
+                          style={{ width: 16, height: 16 }}
+                        />
+                        <span>
+                          <span style={{ fontWeight: 500 }}>{acct.name}</span>
+                          <span style={{ color: '#888', marginLeft: 8, fontSize: '0.85rem' }}>
+                            {acct.subtype} ···· {acct.mask}
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                      <button
+                        className="btn-primary"
+                        disabled={isSaving || selected.length === 0 || !selectionChanged}
+                        onClick={() => handleSaveAccounts(conn.id)}
+                      >
+                        {isSaving ? 'Saving...' : 'Save Selection'}
+                      </button>
+                      {savedIds.length > 0 && !selectionChanged && (
+                        <span style={{ color: '#16a34a', fontSize: '0.85rem' }}>
+                          ✓ {savedIds.length} account{savedIds.length !== 1 ? 's' : ''} selected
+                        </span>
+                      )}
+                      {savedIds.length === 0 && (
+                        <span style={{ color: '#dc2626', fontSize: '0.85rem' }}>
+                          ⚠ Select at least one account to enable sync
+                        </span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
       <h2>Recent Transactions</h2>
       <table>
         <thead>
@@ -184,6 +277,9 @@ export default function Dashboard() {
               <td>{tx.category}</td>
             </tr>
           ))}
+          {transactions.length === 0 && (
+            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions yet. Select accounts above and click Sync Transactions.</td></tr>
+          )}
         </tbody>
       </table>
     </div>

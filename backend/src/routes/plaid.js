@@ -28,19 +28,43 @@ router.post('/exchange-token', async (req, res) => {
     const response = await plaidClient.itemPublicTokenExchange({ public_token });
     const { access_token, item_id } = response.data;
 
-    await db.query(
-      'INSERT INTO bank_connections (institution_name, access_token, item_id) VALUES ($1, $2, $3)',
+    const { rows } = await db.query(
+      'INSERT INTO bank_connections (institution_name, access_token, item_id) VALUES ($1, $2, $3) RETURNING id',
       [institution_name || 'Unknown', access_token, item_id]
     );
 
-    syncAll()
-      .then(r => console.log(`Auto-sync after connect: ${r.synced} new, ${r.skipped} skipped`))
-      .catch(e => console.error('Auto-sync error:', e.message));
-
-    res.json({ success: true, item_id, institution_name: institution_name || 'Unknown' });
+    res.json({ success: true, connection_id: rows[0].id, item_id, institution_name: institution_name || 'Unknown' });
   } catch (err) {
     console.error('Plaid exchange-token error:', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error_message || err.message });
+  }
+});
+
+// Fetch all accounts for a bank connection from Plaid
+router.get('/accounts/:connectionId', async (req, res) => {
+  try {
+    const { rows } = await db.query('SELECT * FROM bank_connections WHERE id = $1', [req.params.connectionId]);
+    if (!rows.length) return res.status(404).json({ error: 'Connection not found' });
+    const resp = await plaidClient.accountsGet({ access_token: rows[0].access_token });
+    res.json(resp.data.accounts);
+  } catch (err) {
+    console.error('Plaid accounts error:', err.response?.data || err.message);
+    res.status(500).json({ error: err.response?.data?.error_message || err.message });
+  }
+});
+
+// Save selected account IDs for a connection
+router.put('/connections/:connectionId/accounts', async (req, res) => {
+  const { account_ids } = req.body;
+  if (!Array.isArray(account_ids)) return res.status(400).json({ error: 'account_ids must be an array' });
+  try {
+    await db.query(
+      'UPDATE bank_connections SET enabled_account_ids = $1 WHERE id = $2',
+      [JSON.stringify(account_ids), req.params.connectionId]
+    );
+    res.json({ success: true, account_ids });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -57,7 +81,7 @@ router.post('/sync', async (req, res) => {
 router.get('/connections', async (req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, institution_name, item_id, created_at FROM bank_connections ORDER BY created_at DESC'
+      'SELECT id, institution_name, item_id, enabled_account_ids, created_at FROM bank_connections ORDER BY created_at DESC'
     );
     res.json(result.rows);
   } catch (err) {

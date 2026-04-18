@@ -47,6 +47,17 @@ async function syncAll() {
   const errors = [];
 
   for (const conn of connections) {
+    const enabledIds = conn.enabled_account_ids;
+    if (!enabledIds || enabledIds.length === 0) {
+      console.warn(`[sync] Skipping ${conn.institution_name} — no accounts selected`);
+      errors.push({
+        institution: conn.institution_name,
+        error_code: 'NO_ACCOUNTS_SELECTED',
+        error: `No accounts selected for ${conn.institution_name}. Open Account Settings on the dashboard and choose which accounts to sync.`,
+      });
+      continue;
+    }
+
     try {
       let allTransactions = [];
       let offset = 0;
@@ -56,7 +67,7 @@ async function syncAll() {
           access_token: conn.access_token,
           start_date: START_DATE,
           end_date: endDate,
-          options: { count: PAGE_SIZE, offset, include_personal_finance_category: true },
+          options: { count: PAGE_SIZE, offset, include_personal_finance_category: true, account_ids: enabledIds },
         });
 
         const { transactions, total_transactions } = resp.data;

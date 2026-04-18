@@ -78,9 +78,21 @@ async function migrate() {
       access_token TEXT NOT NULL,
       item_id TEXT NOT NULL,
       cursor TEXT,
+      enabled_account_ids JSONB,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
   `);
+
+  // Add enabled_account_ids to existing tables and wipe Plaid transactions on first run
+  const { rows: colCheck } = await db.query(`
+    SELECT column_name FROM information_schema.columns
+    WHERE table_name = 'bank_connections' AND column_name = 'enabled_account_ids'
+  `);
+  if (colCheck.length === 0) {
+    await db.query(`ALTER TABLE bank_connections ADD COLUMN IF NOT EXISTS enabled_account_ids JSONB`);
+    await db.query(`DELETE FROM transactions WHERE plaid_transaction_id IS NOT NULL`);
+    console.log('[migrate] Added enabled_account_ids column; wiped Plaid-imported transactions for account filter setup');
+  }
 
   await db.query(`
     CREATE TABLE IF NOT EXISTS settings (
