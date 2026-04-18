@@ -54,15 +54,21 @@ async function migrate() {
       amount NUMERIC(10,2) NOT NULL,
       type TEXT NOT NULL,
       category TEXT NOT NULL,
-      plaid_transaction_id TEXT,
+      plaid_transaction_id TEXT UNIQUE,
       property_id INTEGER REFERENCES properties(id)
     )
   `);
 
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS plaid_transaction_id TEXT`);
+  await db.query(`DROP INDEX IF EXISTS idx_tx_plaid_id`);
   await db.query(`
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_plaid_id
-    ON transactions(plaid_transaction_id)
-    WHERE plaid_transaction_id IS NOT NULL
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'transactions_plaid_id_unique'
+      ) THEN
+        ALTER TABLE transactions ADD CONSTRAINT transactions_plaid_id_unique UNIQUE (plaid_transaction_id);
+      END IF;
+    END $$
   `);
 
   await db.query(`
