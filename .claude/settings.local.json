@@ -33,7 +33,10 @@
       "Bash(node --check src/plaid/sync.js)",
       "Bash(node --check src/cron/rentCheck.js)",
       "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', '..', 'frontend', 'dist'\\)\\)\")",
-      "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', 'frontend', 'dist'\\)\\)\")"
+      "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', 'frontend', 'dist'\\)\\)\")",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)"
     ]
   }
 }
