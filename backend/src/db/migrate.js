@@ -1,6 +1,28 @@
 const db = require('./db');
 
+async function waitForDb(retries = 3, delayMs = 3000) {
+  const url = process.env.DATABASE_URL
+    ? new URL(process.env.DATABASE_URL)
+    : { hostname: 'localhost', port: '5432' };
+  console.log('[migrate] Connecting to host:', url.hostname, 'port:', url.port || '5432');
+
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await db.query('SELECT 1');
+      console.log('[migrate] Database connection established');
+      return;
+    } catch (err) {
+      console.error(`[migrate] Connection attempt ${attempt}/${retries} failed — message: ${err.message} | code: ${err.code} | syscall: ${err.syscall}`);
+      if (attempt === retries) throw err;
+      console.log(`[migrate] Retrying in ${delayMs / 1000}s...`);
+      await new Promise(res => setTimeout(res, delayMs));
+    }
+  }
+}
+
 async function migrate() {
+  await waitForDb();
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS properties (
       id SERIAL PRIMARY KEY,
