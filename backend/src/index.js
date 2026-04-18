@@ -26,14 +26,18 @@ app.use('/api/email',        emailRouter);
 app.use('/api/settings',     settingsRouter);
 
 async function start() {
+  app.listen(PORT, () => {
+    console.log(`PropertyLens backend running on port ${PORT}`);
+  });
+
   try {
     await migrate();
-    app.listen(PORT, () => {
-      console.log(`PropertyLens backend running on http://localhost:${PORT}`);
-    });
   } catch (err) {
-    console.error('Failed to start server:', err.message);
-    process.exit(1);
+    console.error('[startup] Database migration failed — server is running but DB may be unavailable.');
+    console.error('[startup] Cause:', err.message);
+    if (!process.env.DATABASE_URL) {
+      console.error('[startup] DATABASE_URL is not set. Add it as a Railway environment variable.');
+    }
   }
 }
 
