@@ -44,12 +44,19 @@ export default function Dashboard() {
     try {
       const { data } = await api.post('/plaid/sync');
       await fetchTransactions();
-      const msg = data.errors?.length
-        ? `Added ${data.synced} new transactions (${data.skipped} skipped). Some errors occurred.`
-        : data.synced > 0
-          ? `Added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}. ${data.skipped} already existed.`
-          : `Already up to date — ${data.skipped} transaction${data.skipped !== 1 ? 's' : ''} checked, none new.`;
-      setSyncResult({ message: msg, type: data.errors?.length ? 'warn' : 'success' });
+      let msg, type;
+      if (data.errors?.length) {
+        const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
+        msg = `Added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}. Error — ${detail}`;
+        type = 'warn';
+      } else if (data.synced > 0) {
+        msg = `Added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}. ${data.skipped} already existed.`;
+        type = 'success';
+      } else {
+        msg = `Already up to date — ${data.skipped} transaction${data.skipped !== 1 ? 's' : ''} checked, none new.`;
+        type = 'success';
+      }
+      setSyncResult({ message: msg, type });
     } catch (err) {
       setSyncResult({ message: err.response?.data?.error || 'Sync failed. Check server logs.', type: 'error' });
     } finally {

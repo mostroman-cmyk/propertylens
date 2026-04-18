@@ -92,10 +92,23 @@ async function syncAll() {
         client.release();
       }
     } catch (err) {
-      console.error(`Sync failed for ${conn.institution_name}:`, err.response?.data || err.message);
+      const plaidError = err.response?.data;
+      const errorCode = plaidError?.error_code;
+      const errorMessage = plaidError?.error_message || err.message;
+
+      console.error(`[sync] Failed for ${conn.institution_name}:`);
+      console.error(`[sync]   error_code: ${errorCode}`);
+      console.error(`[sync]   error_message: ${errorMessage}`);
+      if (plaidError) console.error(`[sync]   full Plaid error:`, JSON.stringify(plaidError, null, 2));
+
+      const userMessage = errorCode === 'PRODUCT_NOT_READY'
+        ? 'Plaid is still preparing your transactions — this can take a few minutes after connecting. Please try again shortly.'
+        : errorMessage;
+
       errors.push({
         institution: conn.institution_name,
-        error: err.response?.data?.error_message || err.message,
+        error_code: errorCode || null,
+        error: userMessage,
       });
     }
   }
