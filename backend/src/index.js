@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 const migrate = require('./db/migrate');
 
 const propertiesRouter   = require('./routes/properties');
@@ -12,9 +13,12 @@ const emailRouter        = require('./routes/email');
 const settingsRouter     = require('./routes/settings');
 
 const app  = express();
-const PORT = process.env.PORT || 3001;
+const PORT = parseInt(process.env.PORT, 10) || 3001;
+console.log('[startup] process.env.PORT =', process.env.PORT, '→ listening on', PORT);
 
-const FRONTEND_DIST = path.join(__dirname, '..', '..', 'frontend', 'dist');
+const FRONTEND_DIST = path.join(__dirname, '../../frontend/dist');
+console.log('[static] Serving frontend from:', FRONTEND_DIST);
+console.log('[static] Dist folder exists:', fs.existsSync(FRONTEND_DIST));
 
 app.use(cors());
 app.use(express.json());
