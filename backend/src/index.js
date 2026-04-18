@@ -13,7 +13,7 @@ const emailRouter        = require('./routes/email');
 const settingsRouter     = require('./routes/settings');
 
 const app  = express();
-const PORT = parseInt(process.env.PORT, 10) || 3001;
+const PORT = process.env.PORT && process.env.PORT !== '5432' ? process.env.PORT : 3001;
 console.log('[startup] process.env.PORT =', process.env.PORT, '→ listening on', PORT);
 
 const FRONTEND_DIST = path.join(__dirname, '../../frontend/dist');
@@ -46,7 +46,7 @@ async function start() {
     await migrate();
   } catch (err) {
     console.error('[startup] Database migration failed — server is running but DB may be unavailable.');
-    console.error('[startup] Cause:', err.message);
+    console.error('[startup] Full error:', err);
     if (!process.env.DATABASE_URL) {
       console.error('[startup] DATABASE_URL is not set. Add it as a Railway environment variable.');
     }
