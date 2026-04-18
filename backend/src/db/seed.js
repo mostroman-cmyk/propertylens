@@ -1,17 +1,15 @@
 require('dotenv').config({ path: require('path').join(__dirname, '../../.env') });
 const { Pool } = require('pg');
 
-const isLocal = !process.env.DATABASE_URL ||
-  process.env.DATABASE_URL.includes('localhost') ||
-  process.env.DATABASE_URL.includes('127.0.0.1');
-
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/propertylens',
-  ssl: isLocal ? false : { rejectUnauthorized: false },
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 
-async function seed() {
-  const client = await pool.connect();
+async function seed(client) {
+  const ownPool = !client;
+  if (ownPool) client = await pool.connect();
+
   try {
     await client.query('BEGIN');
     await client.query('DELETE FROM transactions');
@@ -20,54 +18,48 @@ async function seed() {
 
     const prop = async (name, address) => {
       const { rows } = await client.query(
-        'INSERT INTO properties (name, address) VALUES ($1, $2) RETURNING id', [name, address]
+        'INSERT INTO properties (name, address) VALUES ($1, $2) RETURNING id',
+        [name, address]
       );
       return rows[0].id;
     };
-    const mapleId = await prop('142 Maple St Duplex', '142 Maple St');
-    const oakId   = await prop('87 Oak Ave Fourplex', '87 Oak Ave');
-    const pineId  = await prop('310 Pine Rd', '310 Pine Rd');
-    const birchId = await prop('55 Birch Ln', '55 Birch Ln');
 
-    const tenant = (pid, name, unit, rent) => client.query(
-      'INSERT INTO tenants (property_id, name, unit, monthly_rent) VALUES ($1, $2, $3, $4)',
-      [pid, name, unit, rent]
-    );
-    await tenant(mapleId, 'Marcus Johnson',   '1A', 1450);
-    await tenant(mapleId, 'Sarah & Tom Chen', '1B', 1450);
-    await tenant(oakId,   'Derek Williams',   '2A', 1200);
-    await tenant(oakId,   'Priya Nair',       '2B', 1200);
-    await tenant(oakId,   'Luis & Ana Reyes', '2C', 1200);
-    await tenant(oakId,   "James O'Brien",    '2D', 1200);
-    await tenant(pineId,  'Donna Fitzgerald', '3A', 1800);
-    await tenant(birchId, 'Kevin Park',       '4A', 1650);
+    const jamacha = await prop('1154 Jamacha Ln Duplex',      '1154 Jamacha Ln, Spring Valley CA 91977');
+    const harness = await prop('9050 Harness St Duplex',      '9050 Harness St, Spring Valley CA 91977');
+    const singing = await prop('8971 Singing Wood Wy Duplex', '8971 Singing Wood Wy, Santee CA 92071');
+    const jeff    = await prop('2618 Jefferson St Duplex',    '2618 Jefferson St, Carlsbad CA 92008');
 
-    const tx = (date, desc, amount, type, category) => client.query(
-      'INSERT INTO transactions (date, description, amount, type, category) VALUES ($1, $2, $3, $4, $5)',
-      [date, desc, amount, type, category]
+    const tenant = (pid, name, unit, bb, rent) => client.query(
+      'INSERT INTO tenants (property_id, name, unit, bedrooms_bathrooms, monthly_rent) VALUES ($1, $2, $3, $4, $5)',
+      [pid, name, unit, bb, rent]
     );
-    await tx('2026-04-01', 'Rent - Marcus Johnson 1A',   1450,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Sarah & Tom Chen 1B', 1450,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Derek Williams 2A',   1200,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Priya Nair 2B',       1200,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Luis & Ana Reyes 2C', 1200,  'income',  'rent');
-    await tx('2026-04-01', "Rent - James O'Brien 2D",    1200,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Donna Fitzgerald 3A', 1800,  'income',  'rent');
-    await tx('2026-04-01', 'Rent - Kevin Park 4A',       1650,  'income',  'rent');
-    await tx('2026-04-05', 'Plumber - 87 Oak Ave',       -320,  'expense', 'maintenance');
-    await tx('2026-04-10', 'Landscaping',                -150,  'expense', 'maintenance');
-    await tx('2026-04-15', 'Property Insurance',         -480,  'expense', 'insurance');
+
+    await tenant(jamacha, 'Cheo',                    '1154', '2 Bedroom 1 Bath', 2226.00);
+    await tenant(jamacha, 'Carillo Carillo',          '1156', '3 Bedroom 1 Bath', 2423.00);
+    await tenant(harness, 'Erick & Connie Rodriguez', '9050', '3 Bedroom 1 Bath', 2357.00);
+    await tenant(harness, 'Shauna Oleson',            '9052', '3 Bedroom 2 Bath', 2423.00);
+    await tenant(singing, 'Baily Andrew',             'A',    '3 Bedroom 1 Bath', 3495.00);
+    await tenant(singing, 'David',                    'B',    '1 Bedroom 1 Bath', 2094.00);
+    await tenant(jeff,    'Julia',                    'A',    '2 Bedroom 1 Bath', 3495.00);
+    await tenant(jeff,    'Daisy Durant',             'B',    '1 Bedroom 1 Bath', 2000.00);
 
     await client.query('COMMIT');
-    console.log('Database seeded successfully.');
+    console.log('[seed] Database seeded — 4 properties, 8 tenants, $20,513/mo total rent');
   } catch (err) {
     await client.query('ROLLBACK');
-    console.error('Seed failed:', err.message);
+    console.error('[seed] Seed failed:', err.message);
     throw err;
   } finally {
-    client.release();
-    await pool.end();
+    if (ownPool) {
+      client.release();
+      await pool.end();
+    }
   }
 }
 
-seed().catch(() => process.exit(1));
+// Allow running directly: node src/db/seed.js
+if (require.main === module) {
+  seed().catch(() => process.exit(1));
+}
+
+module.exports = seed;

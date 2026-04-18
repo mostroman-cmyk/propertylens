@@ -37,8 +37,13 @@ async function migrate() {
       property_id INTEGER REFERENCES properties(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       unit TEXT NOT NULL,
-      monthly_rent NUMERIC(10,2) NOT NULL
+      monthly_rent NUMERIC(10,2) NOT NULL,
+      bedrooms_bathrooms TEXT
     )
+  `);
+
+  await db.query(`
+    ALTER TABLE tenants ADD COLUMN IF NOT EXISTS bedrooms_bathrooms TEXT
   `);
 
   await db.query(`

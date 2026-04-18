@@ -4,6 +4,8 @@ const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
 const migrate = require('./db/migrate');
+const seed    = require('./db/seed');
+const db      = require('./db/db');
 
 const propertiesRouter   = require('./routes/properties');
 const tenantsRouter      = require('./routes/tenants');
@@ -44,8 +46,15 @@ async function start() {
 
   try {
     await migrate();
+    const { rows } = await db.query('SELECT COUNT(*) FROM properties');
+    if (parseInt(rows[0].count, 10) === 0) {
+      console.log('[startup] No properties found — running initial seed...');
+      await seed();
+    } else {
+      console.log('[startup] Properties exist, skipping seed');
+    }
   } catch (err) {
-    console.error('[startup] Database migration failed — server is running but DB may be unavailable.');
+    console.error('[startup] Database setup failed — server is running but DB may be unavailable.');
     console.error('[startup] Full error:', err);
     if (!process.env.DATABASE_URL) {
       console.error('[startup] DATABASE_URL is not set. Add it as a Railway environment variable.');
