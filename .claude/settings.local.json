@@ -31,7 +31,9 @@
       "Bash(node --check src/db/migrate.js)",
       "Bash(node --check src/routes/settings.js)",
       "Bash(node --check src/plaid/sync.js)",
-      "Bash(node --check src/cron/rentCheck.js)"
+      "Bash(node --check src/cron/rentCheck.js)",
+      "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', '..', 'frontend', 'dist'\\)\\)\")",
+      "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', 'frontend', 'dist'\\)\\)\")"
     ]
   }
 }
