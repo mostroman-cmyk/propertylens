@@ -30,13 +30,13 @@ router.get('/property/:propertyId', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { property_id, name, unit, monthly_rent } = req.body;
+  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms } = req.body;
   if (!property_id || !name || !unit || monthly_rent == null)
     return res.status(400).json({ error: 'property_id, name, unit, monthly_rent are required' });
   try {
     const result = await db.query(
-      'INSERT INTO tenants (property_id, name, unit, monthly_rent) VALUES ($1, $2, $3, $4) RETURNING *',
-      [property_id, name, unit, monthly_rent]
+      'INSERT INTO tenants (property_id, name, unit, monthly_rent, bedrooms_bathrooms) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null]
     );
     const id = result.rows[0]?.id;
     const full = await db.query(WITH_PROPERTY + ' WHERE t.id = $1', [id]);
@@ -47,13 +47,13 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const { property_id, name, unit, monthly_rent } = req.body;
+  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms } = req.body;
   if (!property_id || !name || !unit || monthly_rent == null)
     return res.status(400).json({ error: 'property_id, name, unit, monthly_rent are required' });
   try {
     await db.query(
-      'UPDATE tenants SET property_id=$1, name=$2, unit=$3, monthly_rent=$4 WHERE id=$5',
-      [property_id, name, unit, monthly_rent, req.params.id]
+      'UPDATE tenants SET property_id=$1, name=$2, unit=$3, monthly_rent=$4, bedrooms_bathrooms=$5 WHERE id=$6',
+      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null, req.params.id]
     );
     const full = await db.query(WITH_PROPERTY + ' WHERE t.id = $1', [req.params.id]);
     if (!full.rows.length) return res.status(404).json({ error: 'Not found' });

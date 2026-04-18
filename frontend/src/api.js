@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
 export const api = axios.create({ baseURL: `${BASE_URL}/api` });
 
 export const getProperties   = ()         => api.get('/properties').then(r => r.data);
