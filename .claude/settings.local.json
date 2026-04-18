@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where psql *)",
+      "Bash(sc query *)",
+      "Bash(npm install *)",
+      "Bash(node src/db/setup.js)",
+      "Bash(node src/db/seed.js)",
+      "Bash(node src/index.js)",
+      "Bash(curl -s http://localhost:3001/api/health)",
+      "Bash(curl -s http://localhost:3001/api/properties)",
+      "Bash(curl -s http://localhost:3001/api/tenants)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5173)",
+      "Bash(curl -s http://localhost:3001/api/transactions)",
+      "Bash(python -m json.tool)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3001/api/health)",
+      "Bash(netstat -ano)",
+      "Bash(awk '{print $5}')",
+      "Bash(xargs -I{} taskkill /F /PID {})",
+      "Bash(taskkill *)",
+      "PowerShell(Stop-Process *)",
+      "Bash(curl -s -X POST http://localhost:3001/api/plaid/create-link-token -H \"Content-Type: application/json\")",
+      "Bash(curl -s -X POST http://localhost:3001/api/plaid/sync -H \"Content-Type: application/json\")",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(curl -s -X POST http://localhost:3001/api/email/test -H \"Content-Type: application/json\")",
+      "Bash(curl -s http://localhost:3001/api/settings)",
+      "Bash(curl -s -X POST http://localhost:3001/api/settings -H \"Content-Type: application/json\" -d \"{\\\\\"alert_frequency\\\\\":\\\\\"twice\\\\\",\\\\\"alert_day\\\\\":\\\\\"1\\\\\",\\\\\"alert_day2\\\\\":\\\\\"15\\\\\",\\\\\"alert_hour\\\\\":\\\\\"9\\\\\"}\")",
+      "Bash(curl *)",
+      "Bash(npm run *)",
+      "Bash(node --check src/index.js)",
+      "Bash(node --check src/db/migrate.js)",
+      "Bash(node --check src/routes/settings.js)",
+      "Bash(node --check src/plaid/sync.js)",
+      "Bash(node --check src/cron/rentCheck.js)"
+    ]
+  }
+}
