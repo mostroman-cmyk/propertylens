@@ -39,16 +39,13 @@ function classifyTransaction(tx, rentAmounts) {
   return { storedAmount, type, category };
 }
 
-async function callTransactionsSync(accessToken, cursor, enabledIds) {
+async function callTransactionsSync(accessToken, cursor) {
   for (let attempt = 1; attempt <= PRODUCT_NOT_READY_RETRIES; attempt++) {
     try {
       const resp = await plaidClient.transactionsSync({
         access_token: accessToken,
         cursor: cursor || undefined,
-        options: {
-          include_personal_finance_category: true,
-          account_ids: enabledIds,
-        },
+        options: { include_personal_finance_category: true },
       });
       return resp.data;
     } catch (err) {
@@ -87,15 +84,20 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
 
   while (true) {
     batchNum++;
-    const { added, modified, removed, has_more, next_cursor } = await callTransactionsSync(conn.access_token, cursor, enabledIds);
+    const { added, modified, removed, has_more, next_cursor } = await callTransactionsSync(conn.access_token, cursor);
 
-    console.log(`[sync] ${conn.institution_name} — Batch ${batchNum}: ${added.length} added, ${modified.length} modified, ${removed.length} removed, has_more=${has_more}`);
+    // Filter all arrays to selected accounts only
+    const filteredAdded    = added.filter(tx => enabledIds.includes(tx.account_id));
+    const filteredModified = modified.filter(tx => enabledIds.includes(tx.account_id));
+    const filteredRemoved  = removed.filter(tx => enabledIds.includes(tx.account_id));
+
+    console.log(`[sync] ${conn.institution_name} — Batch ${batchNum}: ${added.length} returned from Plaid, ${filteredAdded.length} match selected accounts, inserting... has_more=${has_more}`);
 
     const client = await db.connect();
     try {
       await client.query('BEGIN');
 
-      for (const tx of added) {
+      for (const tx of filteredAdded) {
         if (tx.pending) { totalSkipped++; continue; }
         const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
         const result = await client.query(
@@ -109,7 +111,7 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
         else totalSkipped++;
       }
 
-      for (const tx of modified) {
+      for (const tx of filteredModified) {
         if (tx.pending) continue;
         const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
         const result = await client.query(
@@ -120,7 +122,7 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
         if (result.rowCount > 0) totalModified++;
       }
 
-      for (const tx of removed) {
+      for (const tx of filteredRemoved) {
         await client.query('DELETE FROM transactions WHERE plaid_transaction_id=$1', [tx.transaction_id]);
         totalRemoved++;
       }
