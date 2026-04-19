@@ -199,6 +199,19 @@ table {
   box-shadow: none;
 }
 
+/* Fixed-layout transaction table — colgroup drives column widths */
+.tx-table {
+  table-layout: fixed;
+}
+.tx-table td {
+  max-width: none;
+}
+.tx-table .col-desc {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 thead {
   position: sticky;
   top: 44px;

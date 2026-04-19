@@ -207,7 +207,18 @@ export default function ReviewClassifications() {
         </div>
       )}
 
-      <table>
+      <table className="tx-table">
+        <colgroup>
+          <col style={{ width: 28 }} />
+          <col style={{ width: 90 }} />
+          <col />
+          <col style={{ width: 100 }} />
+          <col style={{ width: 80 }} />
+          <col style={{ width: 110 }} />
+          <col style={{ width: 140 }} />
+          <col style={{ width: 140 }} />
+          <col style={{ width: 60 }} />
+        </colgroup>
         <thead>
           <tr>
             <th style={{ width: 28 }}>
@@ -244,7 +255,7 @@ export default function ReviewClassifications() {
                 <td className="nowrap mono" style={{ fontSize: 11 }}>
                   {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                 </td>
-                <td>{tx.description}</td>
+                <td className="col-desc" title={tx.description}>{tx.description}</td>
                 <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                 <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
 
