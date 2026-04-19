@@ -17,6 +17,12 @@ function currentMonthKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function fmtDate(dateStr) {
+  if (!dateStr) return '—';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -89,27 +95,32 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
-  const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-  const totalExpenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
-  const netIncome = totalIncome - totalExpenses;
+  // Month-scoped calculations
+  const monthTxs = transactions.filter(tx => tx.date && tx.date.startsWith(selectedMonth));
+  const monthIncome   = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+  const monthExpenses = Math.abs(monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
+  const netIncome     = monthIncome - monthExpenses;
 
-  const unmatchedIncome = transactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
+  const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
+  const unmatchedIncome  = transactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
 
   const collectedThisMonth = transactions
     .filter(tx => tx.type === 'income' && tx.tenant_id && tx.rent_month === selectedMonth)
     .reduce((s, tx) => s + parseFloat(tx.amount), 0);
 
   const rentStatus = tenants.map(tenant => {
-    const paid = transactions.some(tx =>
+    const paidTx = transactions.find(tx =>
       tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === selectedMonth
     );
-    return { tenant, paid };
+    return { tenant, paid: !!paidTx, paidDate: paidTx?.date || null };
   });
 
+  const paidCount    = rentStatus.filter(r => r.paid).length;
   const unpaidTenants = rentStatus.filter(r => !r.paid);
-  const outstanding = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
+  const outstanding  = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
+  const paidPct      = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
 
+  const selectedMonthLabel = MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth;
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
 
   return (
@@ -141,18 +152,18 @@ export default function Dashboard() {
 
       {unpaidTenants.length > 0 ? (
         <div className="alert alert-warn" style={{ marginBottom: 8 }}>
-          {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}:{' '}
+          {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {selectedMonthLabel}:{' '}
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
           <span className="mono">${outstanding.toLocaleString()}</span> outstanding.
         </div>
       ) : tenants.length > 0 ? (
         <div className="alert alert-success" style={{ marginBottom: 8 }}>
-          All {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} paid for {MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}.
+          All {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} paid for {selectedMonthLabel}.
         </div>
       ) : null}
       {tenants.length > 0 && (
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
-          Showing rent status for <strong>{MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
+          Showing rent status for <strong>{selectedMonthLabel}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
           Payments deposited on the 25th–31st are counted toward the following month.
         </div>
       )}
@@ -163,7 +174,7 @@ export default function Dashboard() {
           <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Collected ({MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label.split(' ')[0] || ''})</div>
+          <div className="kpi-label">Collected ({selectedMonthLabel.split(' ')[0]})</div>
           <div className="kpi-value">${collectedThisMonth.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
@@ -171,7 +182,7 @@ export default function Dashboard() {
           <div className={`kpi-value${outstanding > 0 ? ' negative' : ' muted'}`}>${outstanding.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Net Income</div>
+          <div className="kpi-label">Net ({selectedMonthLabel.split(' ')[0]})</div>
           <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>${netIncome.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
@@ -181,41 +192,59 @@ export default function Dashboard() {
       </div>
 
       <div className="split-layout">
-        <div>
+        {/* ── Recent Transactions ── */}
+        <div style={{ minWidth: 0, flex: '1 1 0' }}>
           <h2 className="section-title">Recent Transactions</h2>
-          <table>
-            <thead>
-              <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th className="num">Amount</th>
-                <th>Type</th>
-                <th>Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.slice(0, 20).map((tx) => (
-                <tr key={tx.id}>
-                  <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td>
-                  <td>{tx.description}</td>
-                  <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-                  <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-                  <td className="nowrap">
-                    {tx.category}
-                    {tx.property_scope === 'portfolio' && (
-                      <span style={{ marginLeft: 6, fontSize: 10, background: '#F5F5F5', border: '1px solid #E5E5E5', borderRadius: 2, padding: '1px 4px', color: '#666', fontVariant: 'small-caps' }}>🏘 ALL</span>
-                    )}
-                  </td>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
+              <colgroup>
+                <col style={{ width: 80 }} />
+                <col />
+                <col style={{ width: 110 }} />
+                <col style={{ width: 75 }} />
+                <col style={{ width: 120 }} />
+                <col style={{ width: 140 }} />
+                <col style={{ width: 120 }} />
+              </colgroup>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Description</th>
+                  <th className="num">Amount</th>
+                  <th>Type</th>
+                  <th>Category</th>
+                  <th>Property</th>
+                  <th>Tenant</th>
                 </tr>
-              ))}
-              {transactions.length === 0 && (
-                <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions. Go to Settings → Bank Connections to sync.</td></tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {transactions.slice(0, 20).map((tx) => (
+                  <tr key={tx.id}>
+                    <td className="nowrap mono" style={{ fontSize: 12 }}>{fmtDate(tx.date)}</td>
+                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.description}</td>
+                    <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                    <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                    <td className="nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
+                    <td style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                      {tx.property_scope === 'portfolio'
+                        ? <span style={{ fontStyle: 'italic', fontWeight: 600, fontVariant: 'small-caps' }}>All</span>
+                        : (tx.property_name || '—')}
+                    </td>
+                    <td style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                      {tx.tenant_name || '—'}
+                    </td>
+                  </tr>
+                ))}
+                {transactions.length === 0 && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions. Go to Settings → Bank Connections to sync.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <div>
+        {/* ── Rent Status ── */}
+        <div style={{ flexShrink: 0, width: 360 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
             <select
@@ -227,15 +256,47 @@ export default function Dashboard() {
               {MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
             </select>
           </div>
-          <table>
+
+          <table style={{ tableLayout: 'fixed', width: '100%' }}>
+            <colgroup>
+              <col />
+              <col style={{ width: 80 }} />
+              <col style={{ width: 70 }} />
+              <col style={{ width: 60 }} />
+            </colgroup>
             <thead>
-              <tr><th>Tenant</th><th className="num">Rent</th><th>Status</th></tr>
+              <tr>
+                <th>Tenant</th>
+                <th className="num">Rent</th>
+                <th>Paid Date</th>
+                <th>Status</th>
+              </tr>
             </thead>
             <tbody>
-              {rentStatus.map(({ tenant, paid }) => (
+              {/* Summary row */}
+              {tenants.length > 0 && (
+                <tr style={{ background: '#F9F9F9', fontWeight: 600 }}>
+                  <td colSpan={2} style={{ fontSize: 12, paddingTop: 6, paddingBottom: 6 }}>
+                    {paidCount} / {tenants.length} PAID
+                  </td>
+                  <td colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
+                    ${collectedThisMonth.toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
+                  </td>
+                </tr>
+              )}
+              {rentStatus.map(({ tenant, paid, paidDate }) => (
                 <tr key={tenant.id}>
-                  <td>{tenant.name}</td>
-                  <td className="num mono">${parseFloat(tenant.monthly_rent).toLocaleString()}</td>
+                  <td>
+                    <a
+                      href={`/transactions?tenant_id=${tenant.id}`}
+                      style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted #ccc' }}
+                      title="View this tenant's transactions"
+                    >
+                      {tenant.name}
+                    </a>
+                  </td>
+                  <td className="num mono" style={{ fontSize: 12 }}>${parseFloat(tenant.monthly_rent).toLocaleString()}</td>
+                  <td className="nowrap" style={{ fontSize: 12, color: '#666' }}>{paid ? fmtDate(paidDate) : '—'}</td>
                   <td className="nowrap">
                     {paid
                       ? <span className="status-paid">● PAID</span>
@@ -245,7 +306,7 @@ export default function Dashboard() {
                 </tr>
               ))}
               {tenants.length === 0 && (
-                <tr><td colSpan={3} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No tenants.</td></tr>
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No tenants.</td></tr>
               )}
             </tbody>
           </table>

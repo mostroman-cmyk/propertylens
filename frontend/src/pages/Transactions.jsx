@@ -65,6 +65,10 @@ export default function Transactions() {
 
   const [editingCell, setEditingCell] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [tenantIdFilter] = useState(() => {
+    const tid = new URLSearchParams(window.location.search).get('tenant_id');
+    return tid ? parseInt(tid) : null;
+  });
   const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
   const { toast, showToast } = useToast();
@@ -209,7 +213,12 @@ export default function Transactions() {
     }
   };
 
+  const tenantFilterName = tenantIdFilter
+    ? (tenants.find(t => t.id === tenantIdFilter)?.name || `Tenant #${tenantIdFilter}`)
+    : null;
+
   const filtered = transactions.filter(tx => {
+    if (tenantIdFilter && tx.tenant_id !== tenantIdFilter) return false;
     if (filter === 'unmatched')  return tx.type === 'income' && !tx.tenant_id;
     if (filter === 'ambiguous')  return tx.needs_review;
     if (filter === 'portfolio')  return tx.property_scope === 'portfolio';
@@ -279,6 +288,12 @@ export default function Transactions() {
         </div>
         {sortCol && <button className="btn-edit" onClick={resetSort}>Reset sort</button>}
       </div>
+      {tenantFilterName && (
+        <div style={{ marginBottom: 8, padding: '6px 12px', background: '#F5F5F5', border: '1px solid #E5E5E5', borderRadius: 2, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 }}>
+          Filtered by tenant: <strong>{tenantFilterName}</strong>
+          <a href="/transactions" style={{ fontSize: 12, color: '#E30613', textDecoration: 'none' }}>✕ Clear filter</a>
+        </div>
+      )}
 
       <table className="tx-table">
         <colgroup>
