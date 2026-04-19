@@ -10,7 +10,7 @@ export default function Properties() {
   const [tenants, setTenants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [modal, setModal] = useState(null); // null | property object (id=undefined means new)
+  const [modal, setModal] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
@@ -46,11 +46,11 @@ export default function Properties() {
       if (modal.id) {
         const updated = await updateProperty(modal.id, form);
         setProperties(ps => ps.map(p => p.id === modal.id ? updated : p));
-        showToast('Property updated successfully');
+        showToast('Property updated');
       } else {
         const created = await createProperty(form);
         setProperties(ps => [...ps, created]);
-        showToast('Property added successfully');
+        showToast('Property added');
       }
       setModal(null);
     } catch (err) {
@@ -65,8 +65,8 @@ export default function Properties() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ margin: 0 }}>Properties</h1>
+      <div className="page-header">
+        <h1 className="page-title">Properties</h1>
         <button className="btn-primary" onClick={openAdd}>+ Add Property</button>
       </div>
 
@@ -74,34 +74,32 @@ export default function Properties() {
         const propTenants = tenants.filter(t => t.property_id === prop.id);
         const monthlyRent = propTenants.reduce((s, t) => s + parseFloat(t.monthly_rent), 0);
         return (
-          <div key={prop.id} className="card">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+          <div key={prop.id} className="property-block">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <div>
-                <h2 style={{ margin: 0 }}>{prop.name}</h2>
-                <p style={{ color: '#888', marginTop: 4, marginBottom: 16 }}>{prop.address}</p>
+                <div className="property-name">{prop.name}</div>
+                <div className="property-address">{prop.address}</div>
               </div>
-              <button className="btn-edit" onClick={() => openEdit(prop)}>Edit</button>
-            </div>
-            <div className="stat-grid" style={{ marginBottom: 16 }}>
-              <div className="stat-card">
-                <div className="label">Units</div>
-                <div className="value blue">{propTenants.length}</div>
-              </div>
-              <div className="stat-card">
-                <div className="label">Monthly Rent</div>
-                <div className="value green">${monthlyRent.toLocaleString()}</div>
+              <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+                <span className="label">{propTenants.length} units · <span className="mono">${monthlyRent.toLocaleString()}/mo</span></span>
+                <button className="btn-edit" onClick={() => openEdit(prop)}>Edit</button>
               </div>
             </div>
             <table>
-              <thead><tr><th>Unit</th><th>Tenant</th><th>Monthly Rent</th></tr></thead>
+              <thead>
+                <tr><th>Unit</th><th>Tenant</th><th className="num">Monthly Rent</th></tr>
+              </thead>
               <tbody>
                 {propTenants.map(t => (
                   <tr key={t.id}>
-                    <td>{t.unit}</td>
+                    <td className="nowrap">{t.unit}</td>
                     <td>{t.name}</td>
-                    <td>${parseFloat(t.monthly_rent).toLocaleString()}</td>
+                    <td className="num mono">${parseFloat(t.monthly_rent).toLocaleString()}</td>
                   </tr>
                 ))}
+                {propTenants.length === 0 && (
+                  <tr><td colSpan={3} style={{ color: '#888', padding: '8px 12px' }}>No tenants.</td></tr>
+                )}
               </tbody>
             </table>
           </div>

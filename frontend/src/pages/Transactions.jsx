@@ -5,45 +5,18 @@ import Toast, { useToast } from '../components/Toast';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
-const PILL_STYLE = {
-  exact:       { background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0' },
-  amount_only: { background: '#fef9c3', color: '#854d0e', border: '1px solid #fde68a' },
-  ambiguous:   { background: '#fee2e2', color: '#dc2626', border: '1px solid #fecaca' },
-};
-
-function MatchPill({ tx, onAssign }) {
+function MatchStatus({ tx, onAssign }) {
   if (tx.type !== 'income') return null;
-  if (tx.match_confidence === 'exact' || tx.match_confidence === 'amount_only') {
-    return (
-      <span
-        onClick={() => onAssign(tx)}
-        style={{ ...PILL_STYLE[tx.match_confidence], borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-        title="Click to reassign"
-      >
-        {tx.tenant_name}
-      </span>
-    );
+  if (tx.match_confidence === 'exact') {
+    return <span className="status-exact" onClick={() => onAssign(tx)} title="Click to reassign">● {tx.tenant_name}</span>;
+  }
+  if (tx.match_confidence === 'amount_only') {
+    return <span className="status-amount" onClick={() => onAssign(tx)} title="Click to reassign">● {tx.tenant_name}</span>;
   }
   if (tx.match_confidence === 'ambiguous' || tx.needs_review) {
-    return (
-      <span
-        onClick={() => onAssign(tx)}
-        style={{ ...PILL_STYLE.ambiguous, borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer', whiteSpace: 'nowrap' }}
-        title="Click to assign tenant"
-      >
-        Needs Review
-      </span>
-    );
+    return <span className="status-review" onClick={() => onAssign(tx)} title="Click to assign">● REVIEW</span>;
   }
-  return (
-    <span
-      onClick={() => onAssign(tx)}
-      style={{ background: '#f3f4f6', color: '#9ca3af', border: '1px solid #e5e7eb', borderRadius: 12, padding: '2px 8px', fontSize: '0.75rem', cursor: 'pointer' }}
-      title="Click to assign tenant"
-    >
-      Unmatched
-    </span>
-  );
+  return <span className="status-none" onClick={() => onAssign(tx)} title="Click to assign">—</span>;
 }
 
 export default function Transactions() {
@@ -53,26 +26,21 @@ export default function Transactions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Edit modal
   const [modal, setModal] = useState(null);
   const [form, setForm] = useState({ category: '', type: '', property_id: '' });
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
 
-  // Assign tenant modal
   const [assignModal, setAssignModal] = useState(null);
   const [assignTenantId, setAssignTenantId] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
 
-  // Quick-learn rule modal
   const [ruleModal, setRuleModal] = useState(null);
 
-  // Context menu
   const [contextMenu, setContextMenu] = useState(null);
   const contextMenuRef = useRef(null);
 
-  // Filters
-  const [filter, setFilter] = useState('all'); // 'all' | 'unmatched' | 'ambiguous'
+  const [filter, setFilter] = useState('all');
 
   const { toast, showToast } = useToast();
 
@@ -132,7 +100,7 @@ export default function Transactions() {
       setTransactions(txs => txs.map(t => t.id === assignModal.id ? updated : t));
       showToast('Tenant assigned');
       setAssignModal(null);
-    } catch (err) {
+    } catch {
       showToast('Failed to assign tenant');
     } finally {
       setAssignSaving(false);
@@ -144,7 +112,7 @@ export default function Transactions() {
       const result = await autoMatchRent();
       await reload();
       showToast(`Matched: ${result.exact} exact, ${result.amount_only} amount-only, ${result.ambiguous} ambiguous, ${result.none} no match`);
-    } catch (err) {
+    } catch {
       showToast('Auto-match failed');
     }
   };
@@ -180,49 +148,57 @@ export default function Transactions() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  const income   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-  const expenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
+  const income    = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+  const expenses  = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
   const unmatched = transactions.filter(t => t.type === 'income' && !t.tenant_id).length;
   const ambiguous = transactions.filter(t => t.needs_review).length;
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ margin: 0 }}>Transactions</h1>
+      <div className="page-header">
+        <h1 className="page-title">Transactions</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={handleAutoMatch}>Auto-Match Rent</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(false)}>Apply Rules</button>
-          <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All Rules</button>
+          <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All</button>
         </div>
       </div>
 
-      <div className="stat-grid">
-        <div className="stat-card"><div className="label">Total Income</div><div className="value green">${income.toLocaleString()}</div></div>
-        <div className="stat-card"><div className="label">Total Expenses</div><div className="value">${expenses.toLocaleString()}</div></div>
-        <div className="stat-card"><div className="label">Net</div><div className={`value ${income - expenses >= 0 ? 'green' : ''}`}>${(income - expenses).toLocaleString()}</div></div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'unmatched' ? 'all' : 'unmatched')}>
-          <div className="label">Unmatched Rent</div>
-          <div className="value" style={{ color: unmatched > 0 ? '#dc2626' : '#16a34a' }}>{unmatched}</div>
+      <div className="kpi-row">
+        <div className="kpi-item">
+          <div className="kpi-label">Total Income</div>
+          <div className="kpi-value">${income.toLocaleString()}</div>
         </div>
-        <div className="stat-card" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'ambiguous' ? 'all' : 'ambiguous')}>
-          <div className="label">Needs Review</div>
-          <div className="value" style={{ color: ambiguous > 0 ? '#d97706' : '#16a34a' }}>{ambiguous}</div>
+        <div className="kpi-item">
+          <div className="kpi-label">Total Expenses</div>
+          <div className="kpi-value">${expenses.toLocaleString()}</div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Net</div>
+          <div className={`kpi-value${income - expenses < 0 ? ' negative' : ''}`}>${(income - expenses).toLocaleString()}</div>
+        </div>
+        <div className="kpi-item" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'unmatched' ? 'all' : 'unmatched')}>
+          <div className="kpi-label">Unmatched Rent</div>
+          <div className={`kpi-value${unmatched > 0 ? ' negative' : ' muted'}`}>{unmatched}</div>
+        </div>
+        <div className="kpi-item" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'ambiguous' ? 'all' : 'ambiguous')}>
+          <div className="kpi-label">Needs Review</div>
+          <div className={`kpi-value${ambiguous > 0 ? ' negative' : ' muted'}`}>{ambiguous}</div>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        {['all', 'unmatched', 'ambiguous'].map(f => (
+      <div className="filter-tabs">
+        {[
+          { key: 'all',       label: `All (${transactions.length})` },
+          { key: 'unmatched', label: `Unmatched rent (${unmatched})` },
+          { key: 'ambiguous', label: `Needs review (${ambiguous})` },
+        ].map(({ key, label }) => (
           <button
-            key={f}
-            onClick={() => setFilter(f)}
-            style={{
-              padding: '4px 14px', borderRadius: 20, fontSize: '0.82rem', cursor: 'pointer',
-              border: filter === f ? '2px solid #7c8ef7' : '1px solid #e5e7eb',
-              background: filter === f ? '#eef0fe' : '#fff',
-              color: filter === f ? '#4f46e5' : '#555', fontWeight: filter === f ? 600 : 400,
-            }}
+            key={key}
+            className={`filter-tab${filter === key ? ' active' : ''}`}
+            onClick={() => setFilter(key)}
           >
-            {f === 'all' ? `All (${transactions.length})` : f === 'unmatched' ? `Unmatched rent (${unmatched})` : `Needs review (${ambiguous})`}
+            {label}
           </button>
         ))}
       </div>
@@ -230,21 +206,27 @@ export default function Transactions() {
       <table>
         <thead>
           <tr>
-            <th>Date</th><th>Description</th><th>Amount</th><th>Type</th>
-            <th>Category</th><th>Property</th><th>Tenant Match</th><th></th>
+            <th>Date</th>
+            <th>Description</th>
+            <th className="num">Amount</th>
+            <th>Type</th>
+            <th>Category</th>
+            <th>Property</th>
+            <th>Tenant</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           {filtered.map(tx => (
             <tr key={tx.id} onContextMenu={e => handleContextMenu(e, tx)}>
-              <td>{new Date(tx.date).toLocaleDateString()}</td>
-              <td style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.description}</td>
-              <td>${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-              <td><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-              <td>{tx.category}</td>
-              <td style={{ color: '#888', fontSize: '0.85em' }}>{tx.property_name || '—'}</td>
-              <td><MatchPill tx={tx} onAssign={openAssign} /></td>
-              <td style={{ width: 50 }}>
+              <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</td>
+              <td>{tx.description}</td>
+              <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+              <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+              <td className="nowrap">{tx.category}</td>
+              <td style={{ color: '#666' }}>{tx.property_name || '—'}</td>
+              <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
+              <td className="nowrap">
                 <button className="btn-edit" onClick={() => openEdit(tx)}>Edit</button>
               </td>
             </tr>
@@ -256,50 +238,19 @@ export default function Transactions() {
       </table>
 
       {contextMenu && (
-        <div
-          ref={contextMenuRef}
-          style={{
-            position: 'fixed', top: contextMenu.y, left: contextMenu.x,
-            background: '#fff', border: '1px solid #e5e7eb', borderRadius: 8,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12)', zIndex: 1000, minWidth: 200,
-          }}
-        >
-          <div style={{ padding: '4px 0' }}>
-            <div
-              onClick={() => { openAssign(contextMenu.tx); }}
-              style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '0.9rem' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = ''}
-            >
-              Assign tenant
-            </div>
-            <div
-              onClick={() => openRuleModal(contextMenu.tx)}
-              style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '0.9rem' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = ''}
-            >
-              Create rule from this
-            </div>
-            <div
-              onClick={() => { openEdit(contextMenu.tx); setContextMenu(null); }}
-              style={{ padding: '8px 16px', cursor: 'pointer', fontSize: '0.9rem' }}
-              onMouseEnter={e => e.target.style.background = '#f5f5f5'}
-              onMouseLeave={e => e.target.style.background = ''}
-            >
-              Edit transaction
-            </div>
-          </div>
+        <div ref={contextMenuRef} className="context-menu" style={{ top: contextMenu.y, left: contextMenu.x }}>
+          <div className="context-menu-item" onClick={() => openAssign(contextMenu.tx)}>Assign tenant</div>
+          <div className="context-menu-item" onClick={() => openRuleModal(contextMenu.tx)}>Create rule from this</div>
+          <div className="context-menu-item" onClick={() => { openEdit(contextMenu.tx); setContextMenu(null); }}>Edit transaction</div>
         </div>
       )}
 
-      {/* Edit transaction modal */}
       {modal !== null && (
         <Modal title="Edit Transaction" onClose={() => setModal(null)} onSave={handleSave} saving={saving} error={modalError}>
-          <div style={{ color: '#555', fontSize: '0.9rem', marginBottom: 16, padding: '10px 12px', background: '#f5f6fa', borderRadius: 8 }}>
+          <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
             <strong>{modal.description}</strong>
             <span style={{ marginLeft: 10, color: '#888' }}>{new Date(modal.date).toLocaleDateString()}</span>
-            <span style={{ marginLeft: 10, fontWeight: 600 }}>${Math.abs(parseFloat(modal.amount)).toLocaleString()}</span>
+            <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(modal.amount)).toLocaleString()}</span>
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -326,12 +277,11 @@ export default function Transactions() {
         </Modal>
       )}
 
-      {/* Assign tenant modal */}
       {assignModal && (
         <Modal title="Assign Tenant" onClose={() => setAssignModal(null)} onSave={handleAssignSave} saving={assignSaving}>
-          <div style={{ color: '#555', fontSize: '0.9rem', marginBottom: 16, padding: '10px 12px', background: '#f5f6fa', borderRadius: 8 }}>
+          <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
             <strong>{assignModal.description}</strong>
-            <span style={{ marginLeft: 10, fontWeight: 600 }}>${Math.abs(parseFloat(assignModal.amount)).toLocaleString()}</span>
+            <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(assignModal.amount)).toLocaleString()}</span>
           </div>
           <div className="form-group">
             <label>Tenant</label>
@@ -343,7 +293,6 @@ export default function Transactions() {
         </Modal>
       )}
 
-      {/* Quick-learn rule modal */}
       {ruleModal && (
         <Modal
           title="Create Categorization Rule"

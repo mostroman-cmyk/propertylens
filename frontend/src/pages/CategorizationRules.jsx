@@ -66,14 +66,14 @@ export default function CategorizationRules() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ margin: 0 }}>Categorization Rules</h1>
+      <div className="page-header">
+        <h1 className="page-title">Rules</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={() => handleApply(false)} disabled={applying}>
-            {applying ? 'Applying...' : 'Apply Rules to Uncategorized'}
+            {applying ? 'Applying...' : 'Apply to Uncategorized'}
           </button>
           <button className="btn-secondary" onClick={() => handleApply(true)} disabled={applying}>
-            {applying ? 'Applying...' : 'Re-Apply to All Expenses'}
+            {applying ? 'Applying...' : 'Re-Apply to All'}
           </button>
         </div>
       </div>
@@ -135,12 +135,7 @@ export default function CategorizationRules() {
               <td><span className={`badge ${rule.type}`}>{rule.type}</span></td>
               <td style={{ color: '#888' }}>{rule.priority}</td>
               <td style={{ width: 70 }}>
-                <button
-                  onClick={() => handleDelete(rule.id)}
-                  style={{ background: 'none', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 6, padding: '3px 10px', cursor: 'pointer', fontSize: '0.8rem' }}
-                >
-                  Delete
-                </button>
+                <button className="btn-danger" onClick={() => handleDelete(rule.id)}>Delete</button>
               </td>
             </tr>
           ))}

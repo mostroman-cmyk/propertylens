@@ -7,12 +7,24 @@ import CategorizationRules from './pages/CategorizationRules';
 import Settings from './pages/Settings';
 import './App.css';
 
+function TopBar() {
+  const dateStr = new Date().toLocaleDateString('en-US', {
+    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
+  });
+  return (
+    <div className="topbar">
+      <span className="topbar-brand">PROPERTYLENS</span>
+      <span className="topbar-meta">{dateStr}</span>
+    </div>
+  );
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <div className="app">
+        <TopBar />
         <nav className="sidebar">
-          <div className="logo">PropertyLens</div>
           <NavLink to="/" end>Dashboard</NavLink>
           <NavLink to="/properties">Properties</NavLink>
           <NavLink to="/tenants">Tenants</NavLink>

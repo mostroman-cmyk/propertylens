@@ -71,23 +71,23 @@ export default function Tenants() {
 
   return (
     <div>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <h1 style={{ margin: 0 }}>Tenants</h1>
+      <div className="page-header">
+        <h1 className="page-title">Tenants</h1>
         <button className="btn-primary" onClick={openAdd}>+ Add Tenant</button>
       </div>
 
       <table>
         <thead>
-          <tr><th>Name</th><th>Property</th><th>Unit</th><th>Monthly Rent</th><th></th></tr>
+          <tr><th>Name</th><th>Property</th><th>Unit</th><th className="num">Monthly Rent</th><th></th></tr>
         </thead>
         <tbody>
           {tenants.map(t => (
             <tr key={t.id}>
               <td>{t.name}</td>
               <td>{t.property_name}</td>
-              <td>{t.unit}</td>
-              <td>${parseFloat(t.monthly_rent).toLocaleString()}</td>
-              <td style={{ width: 60 }}>
+              <td className="nowrap">{t.unit}</td>
+              <td className="num mono">${parseFloat(t.monthly_rent).toLocaleString()}</td>
+              <td className="nowrap">
                 <button className="btn-edit" onClick={() => openEdit(t)}>Edit</button>
               </td>
             </tr>
