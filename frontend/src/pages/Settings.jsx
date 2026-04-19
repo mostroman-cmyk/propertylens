@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings, api } from '../api';
+import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -30,51 +31,78 @@ function buildSummary(s) {
   const timeStr = `${hour}:00 ${ampm}`;
   const email = s.notify_email || 'your email';
   const freq = s.alert_frequency || 'monthly';
-
   if (freq === 'weekly') {
-    const dayName = WEEKDAY_NAMES[parseInt(s.alert_weekday || '1')];
-    return `Alerts are currently set to send every ${dayName} at ${timeStr} to ${email}`;
+    return `Sending every ${WEEKDAY_NAMES[parseInt(s.alert_weekday || '1')]} at ${timeStr} to ${email}`;
   }
   if (freq === 'twice') {
-    const d1 = ordinal(parseInt(s.alert_day  || '5'));
-    const d2 = ordinal(parseInt(s.alert_day2 || '20'));
-    return `Alerts are currently set to send on the ${d1} and ${d2} of every month at ${timeStr} to ${email}`;
+    return `Sending on the ${ordinal(parseInt(s.alert_day || '5'))} and ${ordinal(parseInt(s.alert_day2 || '20'))} of each month at ${timeStr} to ${email}`;
   }
-  return `Alerts are currently set to send on the ${ordinal(parseInt(s.alert_day || '5'))} of every month at ${timeStr} to ${email}`;
+  return `Sending on the ${ordinal(parseInt(s.alert_day || '5'))} of each month at ${timeStr} to ${email}`;
 }
 
 export default function Settings() {
   const [settings, setSettings] = useState(null);
-  const [loading, setLoading]   = useState(true);
-  const { toast, showToast }    = useToast();
+  const [loading, setLoading] = useState(true);
+  const { toast, showToast } = useToast();
 
-  // Email section state
-  const [email, setEmail]         = useState('');
+  // Notifications state
+  const [email, setEmail] = useState('');
   const [savingEmail, setSavingEmail] = useState(false);
   const [testingEmail, setTestingEmail] = useState(false);
-
-  // Schedule section state
   const [frequency, setFrequency] = useState('monthly');
-  const [day,       setDay]       = useState('5');
-  const [day2,      setDay2]      = useState('20');
-  const [weekday,   setWeekday]   = useState('1');
-  const [hour12,    setHour12]    = useState(6);
-  const [ampm,      setAmpm]      = useState('PM');
+  const [day, setDay] = useState('5');
+  const [day2, setDay2] = useState('20');
+  const [weekday, setWeekday] = useState('1');
+  const [hour12, setHour12] = useState(6);
+  const [ampm, setAmpm] = useState('PM');
   const [savingSchedule, setSavingSchedule] = useState(false);
 
-  useEffect(() => {
-    getSettings().then(s => {
-      setSettings(s);
-      setEmail(s.notify_email || '');
-      setFrequency(s.alert_frequency || 'monthly');
-      setDay(s.alert_day || '5');
-      setDay2(s.alert_day2 || '20');
-      setWeekday(s.alert_weekday || '1');
-      const { hour, ampm: ap } = hour24ToDisplay(s.alert_hour || '18');
-      setHour12(hour);
-      setAmpm(ap);
-    }).finally(() => setLoading(false));
+  // Bank connections state
+  const [connections, setConnections] = useState([]);
+  const [connectionAccounts, setConnectionAccounts] = useState({});
+  const [pendingSelections, setPendingSelections] = useState({});
+  const [savingAccounts, setSavingAccounts] = useState({});
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState(null);
+
+  const fetchAccountsForConnections = useCallback(async (conns) => {
+    const accountResults = {};
+    const selectionResults = {};
+    await Promise.all(conns.map(async (conn) => {
+      try {
+        const { data } = await api.get(`/plaid/accounts/${conn.id}`);
+        accountResults[conn.id] = data;
+        selectionResults[conn.id] = conn.enabled_account_ids || [];
+      } catch {
+        accountResults[conn.id] = [];
+        selectionResults[conn.id] = conn.enabled_account_ids || [];
+      }
+    }));
+    setConnectionAccounts(prev => ({ ...prev, ...accountResults }));
+    setPendingSelections(prev => ({ ...prev, ...selectionResults }));
   }, []);
+
+  const fetchConnections = useCallback(async () => {
+    const { data } = await api.get('/plaid/connections');
+    setConnections(data);
+    if (data.length > 0) await fetchAccountsForConnections(data);
+  }, [fetchAccountsForConnections]);
+
+  useEffect(() => {
+    Promise.all([getSettings(), fetchConnections()])
+      .then(([s]) => {
+        setSettings(s);
+        setEmail(s.notify_email || '');
+        setFrequency(s.alert_frequency || 'monthly');
+        setDay(s.alert_day || '5');
+        setDay2(s.alert_day2 || '20');
+        setWeekday(s.alert_weekday || '1');
+        const { hour, ampm: ap } = hour24ToDisplay(s.alert_hour || '18');
+        setHour12(hour);
+        setAmpm(ap);
+      })
+      .finally(() => setLoading(false));
+  }, [fetchConnections]);
 
   const handleSaveEmail = async () => {
     setSavingEmail(true);
@@ -121,27 +149,88 @@ export default function Settings() {
     }
   };
 
+  const handleBankConnected = async (institutionName) => {
+    showToast(`${institutionName} connected. Select accounts below.`);
+    await fetchConnections();
+  };
+
+  const handleAccountToggle = (connId, accountId) => {
+    setPendingSelections(prev => {
+      const current = prev[connId] || [];
+      const updated = current.includes(accountId)
+        ? current.filter(id => id !== accountId)
+        : [...current, accountId];
+      return { ...prev, [connId]: updated };
+    });
+  };
+
+  const handleSaveAccounts = async (connId) => {
+    setSavingAccounts(prev => ({ ...prev, [connId]: true }));
+    try {
+      const account_ids = pendingSelections[connId] || [];
+      await api.put(`/plaid/connections/${connId}/accounts`, { account_ids });
+      setConnections(prev => prev.map(c => c.id === connId ? { ...c, enabled_account_ids: account_ids } : c));
+      showToast('Account selection saved');
+    } catch {
+      showToast('Failed to save account selection');
+    } finally {
+      setSavingAccounts(prev => ({ ...prev, [connId]: false }));
+    }
+  };
+
+  const handleSync = async () => {
+    const unconfigured = connections.filter(c => !c.enabled_account_ids?.length);
+    if (connections.length === 0) {
+      setSyncResult({ message: 'No bank accounts connected. Connect one below.', type: 'warn' });
+      return;
+    }
+    if (unconfigured.length > 0) {
+      setSyncResult({ message: `Select accounts to sync for: ${unconfigured.map(c => c.institution_name).join(', ')}`, type: 'warn' });
+      return;
+    }
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const { data } = await api.post('/plaid/sync');
+      let msg, type;
+      if (data.errors?.length) {
+        const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
+        msg = `Added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}. Error — ${detail}`;
+        type = 'warn';
+      } else if (data.synced > 0) {
+        msg = `Added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}. ${data.skipped} already existed.`;
+        type = 'success';
+      } else {
+        msg = `Already up to date — ${data.skipped} transaction${data.skipped !== 1 ? 's' : ''} checked, none new.`;
+        type = 'success';
+      }
+      setSyncResult({ message: msg, type });
+    } catch (err) {
+      setSyncResult({ message: err.response?.data?.error || 'Sync failed.', type: 'error' });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading...</div>;
 
   const days = Array.from({ length: 28 }, (_, i) => i + 1);
+  const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
 
   return (
     <div>
-      <h1>Settings</h1>
-
-      {/* Schedule summary */}
-      <div className="settings-summary">
-        <span className="settings-summary-icon">&#128197;</span>
-        {buildSummary(settings)}
+      <div className="page-header">
+        <h1 className="page-title">Settings</h1>
       </div>
 
-      {/* ── Notification Email ── */}
+      {/* ── SECTION 1: NOTIFICATIONS ── */}
       <div className="settings-section">
-        <div className="settings-section-title">Notification Email</div>
-        <p className="settings-section-desc">Rent alerts and monthly reports are sent to this address.</p>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap' }}>
+        <div className="settings-section-title">Notifications</div>
+        <p className="settings-section-desc">{buildSummary(settings)}</p>
+
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end', flexWrap: 'wrap', marginBottom: 20 }}>
           <div className="form-group" style={{ flex: 1, minWidth: 240, marginBottom: 0 }}>
-            <label>Email Address</label>
+            <label>Notification Email</label>
             <input
               className="form-input"
               type="email"
@@ -157,32 +246,19 @@ export default function Settings() {
             {testingEmail ? 'Sending...' : 'Send Test Email'}
           </button>
         </div>
-      </div>
 
-      {/* ── Alert Schedule ── */}
-      <div className="settings-section">
-        <div className="settings-section-title">Alert Schedule</div>
-        <p className="settings-section-desc">When should PropertyLens send your rent status report?</p>
-
-        {/* Frequency */}
         <div className="form-group">
           <label>Frequency</label>
           <div className="radio-group">
             {[['monthly','Monthly'],['twice','Twice a month'],['weekly','Weekly']].map(([val, label]) => (
               <label key={val} className={`radio-option ${frequency === val ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  value={val}
-                  checked={frequency === val}
-                  onChange={() => setFrequency(val)}
-                />
+                <input type="radio" value={val} checked={frequency === val} onChange={() => setFrequency(val)} />
                 {label}
               </label>
             ))}
           </div>
         </div>
 
-        {/* Day picker — depends on frequency */}
         {frequency === 'monthly' && (
           <div className="form-group">
             <label>Day of Month</label>
@@ -218,7 +294,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Time picker */}
         <div className="form-group">
           <label>Time</label>
           <div style={{ display: 'flex', gap: 8 }}>
@@ -236,6 +311,108 @@ export default function Settings() {
           {savingSchedule ? 'Saving...' : 'Save Schedule'}
         </button>
       </div>
+
+      {/* ── SECTION 2: BANK CONNECTIONS ── */}
+      <div className="settings-section">
+        <div className="settings-section-title">Bank Connections</div>
+        <p className="settings-section-desc">Connect bank accounts via Plaid to import transactions automatically.</p>
+
+        {syncResult && (
+          <div className={`alert ${alertClass[syncResult.type]}`} style={{ marginBottom: 16 }}>{syncResult.message}</div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
+          <ConnectBank onSuccess={handleBankConnected} />
+          <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
+            {syncing ? 'Syncing...' : 'Sync Transactions'}
+          </button>
+        </div>
+
+        {connections.length === 0 ? (
+          <p style={{ color: '#888', fontSize: 13 }}>No banks connected yet.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr><th>Institution</th><th>Connected</th><th>Accounts Selected</th></tr>
+            </thead>
+            <tbody>
+              {connections.map(conn => (
+                <tr key={conn.id}>
+                  <td>{conn.institution_name}</td>
+                  <td className="nowrap" style={{ color: '#666' }}>{new Date(conn.created_at).toLocaleDateString()}</td>
+                  <td style={{ color: '#666' }}>
+                    {conn.enabled_account_ids?.length
+                      ? `${conn.enabled_account_ids.length} account${conn.enabled_account_ids.length !== 1 ? 's' : ''}`
+                      : <span style={{ color: '#E30613' }}>None selected</span>
+                    }
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {/* ── SECTION 3: ACCOUNT SELECTION ── */}
+      {connections.length > 0 && (
+        <div className="settings-section">
+          <div className="settings-section-title">Account Selection</div>
+          <p className="settings-section-desc">Choose which accounts to include when syncing transactions.</p>
+
+          {connections.map(conn => {
+            const accounts = connectionAccounts[conn.id];
+            const selected = pendingSelections[conn.id] || [];
+            const savedIds = conn.enabled_account_ids || [];
+            const isSaving = savingAccounts[conn.id];
+            const selectionChanged = JSON.stringify([...selected].sort()) !== JSON.stringify([...savedIds].sort());
+
+            return (
+              <div key={conn.id} style={{ marginBottom: 24 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 10 }}>{conn.institution_name}</div>
+                {!accounts ? (
+                  <div className="label">Loading accounts...</div>
+                ) : accounts.length === 0 ? (
+                  <div className="error" style={{ padding: 0 }}>Could not load accounts from Plaid.</div>
+                ) : (
+                  <>
+                    {accounts.map(acct => (
+                      <label key={acct.account_id} className="account-item" style={{ cursor: 'pointer' }}>
+                        <input
+                          type="checkbox"
+                          checked={selected.includes(acct.account_id)}
+                          onChange={() => handleAccountToggle(conn.id, acct.account_id)}
+                          style={{ width: 14, height: 14, accentColor: '#000', flexShrink: 0 }}
+                        />
+                        <div>
+                          <div className="account-name">{acct.name}</div>
+                          <div className="account-meta">{acct.subtype} ···· {acct.mask}</div>
+                        </div>
+                      </label>
+                    ))}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                      <button
+                        className="btn-primary"
+                        disabled={isSaving || selected.length === 0 || !selectionChanged}
+                        onClick={() => handleSaveAccounts(conn.id)}
+                      >
+                        {isSaving ? 'Saving...' : 'Save Selection'}
+                      </button>
+                      {savedIds.length > 0 && !selectionChanged && (
+                        <span style={{ fontSize: 11, color: '#666' }}>
+                          ✓ {savedIds.length} account{savedIds.length !== 1 ? 's' : ''} active
+                        </span>
+                      )}
+                      {savedIds.length === 0 && (
+                        <span style={{ fontSize: 11, color: '#E30613' }}>Select at least one account to enable sync</span>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <Toast message={toast} />
     </div>
