@@ -1,10 +1,28 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant } from '../api';
+import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant, setRentMonth } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
+
+function formatRentMonth(ym) {
+  if (!ym) return '—';
+  const [y, m] = ym.split('-');
+  return new Date(parseInt(y), parseInt(m) - 1, 1)
+    .toLocaleDateString('en-US', { month: 'short', year: 'numeric' })
+    .toUpperCase();
+}
+
+function getRentMonthOptions() {
+  const now = new Date();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() + i - 3, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    return { val, label: d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) };
+  });
+}
+const RENT_MONTH_OPTIONS = getRentMonthOptions();
 
 function MatchStatus({ tx, onAssign }) {
   if (tx.type !== 'income') return null;
@@ -153,6 +171,16 @@ export default function Transactions() {
     setContextMenu(null);
   };
 
+  const handleRentMonthEdit = async (tx, rent_month) => {
+    try {
+      const updated = await setRentMonth(tx.id, rent_month);
+      setTransactions(txs => txs.map(t => t.id === tx.id ? { ...t, ...updated } : t));
+      showToast('Rent month updated');
+    } catch {
+      showToast('Failed to update rent month');
+    }
+  };
+
   const filtered = transactions.filter(tx => {
     if (filter === 'unmatched') return tx.type === 'income' && !tx.tenant_id;
     if (filter === 'ambiguous') return tx.needs_review;
@@ -230,6 +258,7 @@ export default function Transactions() {
           <col style={{ width: 110 }} />
           <col style={{ width: 140 }} />
           <col style={{ width: 140 }} />
+          <col style={{ width: 90 }} />
           <col style={{ width: 60 }} />
         </colgroup>
         <thead>
@@ -247,6 +276,7 @@ export default function Transactions() {
                 {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
               </th>
             ))}
+            <th>Rent Month</th>
             <th></th>
           </tr>
         </thead>
@@ -260,13 +290,38 @@ export default function Transactions() {
               <td className="nowrap">{tx.category}</td>
               <td style={{ color: '#666' }}>{tx.property_name || '—'}</td>
               <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
+              <td className="nowrap" style={{ fontSize: 11 }}>
+                {tx.type === 'income' && tx.tenant_id ? (
+                  editingCell?.txId === tx.id && editingCell?.field === 'rent_month' ? (
+                    <select
+                      autoFocus
+                      className="form-input"
+                      style={{ height: 24, padding: '0 4px', fontSize: 11 }}
+                      value={tx.rent_month || ''}
+                      onChange={e => { handleRentMonthEdit(tx, e.target.value); setEditingCell(null); }}
+                      onBlur={() => setEditingCell(null)}
+                    >
+                      {RENT_MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+                    </select>
+                  ) : (
+                    <span
+                      onClick={() => setEditingCell({ txId: tx.id, field: 'rent_month' })}
+                      style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}
+                      title="Click to change rent month"
+                    >
+                      {tx.needs_month_review && <span style={{ color: '#F59E0B', marginRight: 3 }}>●</span>}
+                      {formatRentMonth(tx.rent_month)}
+                    </span>
+                  )
+                ) : <span style={{ color: '#ccc' }}>—</span>}
+              </td>
               <td className="nowrap">
                 <button className="btn-edit" onClick={() => openEdit(tx)}>Edit</button>
               </td>
             </tr>
           ))}
           {filtered.length === 0 && (
-            <tr><td colSpan={8} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
+            <tr><td colSpan={9} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
           )}
         </tbody>
       </table>

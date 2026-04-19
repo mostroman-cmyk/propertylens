@@ -133,8 +133,9 @@ async function sendRentReport({ month, year } = {}) {
   month = month ?? (now.getMonth() + 1);
   year  = year  ?? now.getFullYear();
 
-  // Pad month for SQL LIKE match: '2026-04-%'
-  const monthPrefix = `${year}-${String(month).padStart(2, '0')}-%`;
+  const rentMonthKey = `${year}-${String(month).padStart(2, '0')}`;
+  // For fallback unassigned deposits, still check deposit date
+  const monthPrefix = `${rentMonthKey}-%`;
 
   // All tenants with their property name
   const { rows: tenants } = await db.query(`
@@ -145,17 +146,17 @@ async function sendRentReport({ month, year } = {}) {
     ORDER BY p.id, t.unit
   `);
 
-  // Primary: tenant_id-matched deposits this month
+  // Primary: matched deposits where rent_month = target month
   const { rows: matchedDeposits } = await db.query(`
     SELECT DISTINCT ON (tx.tenant_id) tx.tenant_id, tx.date AS paid_date
     FROM transactions tx
-    WHERE tx.type = 'income' AND tx.date LIKE $1 AND tx.tenant_id IS NOT NULL
+    WHERE tx.type = 'income' AND tx.rent_month = $1 AND tx.tenant_id IS NOT NULL
     ORDER BY tx.tenant_id, tx.date ASC
-  `, [monthPrefix]);
+  `, [rentMonthKey]);
 
   const matchedByTenantId = new Map(matchedDeposits.map(d => [d.tenant_id, d.paid_date]));
 
-  // Fallback: greedy amount-match for tenants not yet matched via tenant_id
+  // Fallback: greedy amount-match for tenants not yet matched via rent_month
   const unmatchedTenants = tenants.filter(t => !matchedByTenantId.has(t.id));
   const { rows: unassignedDeposits } = await db.query(`
     SELECT amount, date FROM transactions

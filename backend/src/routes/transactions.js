@@ -4,6 +4,7 @@ const db = require('../db/db');
 const { autoMatchAll } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
 const { backfillPropertyTenant } = require('../matching/backfill');
+const { calculateRentMonth, recalculateRentMonths } = require('../matching/rentMonth');
 
 const SELECT_TX = `
   SELECT tx.*, p.name AS property_name, t.name AS tenant_name
@@ -56,16 +57,19 @@ router.put('/:id/assign-tenant', async (req, res) => {
   try {
     const confidence = tenant_id ? 'exact' : null;
     if (tenant_id) {
+      const { rows: [tx] } = await db.query('SELECT date FROM transactions WHERE id=$1', [req.params.id]);
+      const { rent_month, needs_month_review } = calculateRentMonth(tx.date);
       await db.query(
         `UPDATE transactions
          SET tenant_id=$1, match_confidence=$2, needs_review=false,
-             property_id = COALESCE(property_id, (SELECT property_id FROM tenants WHERE id = $1))
-         WHERE id=$3`,
-        [tenant_id, confidence, req.params.id]
+             property_id = COALESCE(property_id, (SELECT property_id FROM tenants WHERE id = $1)),
+             rent_month=$3, needs_month_review=$4
+         WHERE id=$5`,
+        [tenant_id, confidence, rent_month, needs_month_review, req.params.id]
       );
     } else {
       await db.query(
-        'UPDATE transactions SET tenant_id=NULL, match_confidence=NULL, needs_review=false WHERE id=$1',
+        'UPDATE transactions SET tenant_id=NULL, match_confidence=NULL, needs_review=false, rent_month=NULL, needs_month_review=false WHERE id=$1',
         [req.params.id]
       );
     }
@@ -128,6 +132,32 @@ router.post('/bulk-update', async (req, res) => {
       await db.query(`UPDATE transactions SET ${sets.join(', ')} WHERE id = ANY($1::int[])`, params);
     }
     res.json({ updated: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manually override rent_month for a single transaction
+router.put('/:id/rent-month', async (req, res) => {
+  const { rent_month } = req.body;
+  try {
+    await db.query(
+      'UPDATE transactions SET rent_month=$1, needs_month_review=false WHERE id=$2',
+      [rent_month || null, req.params.id]
+    );
+    const result = await db.query(SELECT_TX + ' WHERE tx.id = $1', [req.params.id]);
+    if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Recalculate rent_month for all matched income transactions
+router.post('/recalculate-rent-months', async (req, res) => {
+  try {
+    const result = await recalculateRentMonths();
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

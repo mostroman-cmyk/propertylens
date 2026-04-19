@@ -1,6 +1,22 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
 
+function getMonthOptions() {
+  const now = new Date();
+  return Array.from({ length: 13 }, (_, i) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - 6 + i, 1);
+    const val = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const label = d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    return { val, label };
+  });
+}
+const MONTH_OPTIONS = getMonthOptions();
+
+function currentMonthKey() {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -8,6 +24,7 @@ export default function Dashboard() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
+  const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
 
   const fetchTransactions = useCallback(() =>
     getTransactions().then(setTransactions), []);
@@ -48,29 +65,19 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  const now = new Date();
-  const thisMonth = now.getMonth();
-  const thisYear = now.getFullYear();
-
   const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
   const totalIncome = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
   const totalExpenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
   const netIncome = totalIncome - totalExpenses;
 
   const collectedThisMonth = transactions
-    .filter(tx => {
-      const d = new Date(tx.date);
-      return tx.type === 'income' && tx.tenant_id &&
-        d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-    })
+    .filter(tx => tx.type === 'income' && tx.tenant_id && tx.rent_month === selectedMonth)
     .reduce((s, tx) => s + parseFloat(tx.amount), 0);
 
   const rentStatus = tenants.map(tenant => {
-    const paid = transactions.some(tx => {
-      const d = new Date(tx.date);
-      return tx.type === 'income' && tx.tenant_id === tenant.id &&
-        d.getMonth() === thisMonth && d.getFullYear() === thisYear;
-    });
+    const paid = transactions.some(tx =>
+      tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === selectedMonth
+    );
     return { tenant, paid };
   });
 
@@ -94,7 +101,7 @@ export default function Dashboard() {
 
       {unpaidTenants.length > 0 && (
         <div className="alert alert-warn" style={{ marginBottom: 20 }}>
-          {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid this month:{' '}
+          {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}:{' '}
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
           <span className="mono">${outstanding.toLocaleString()}</span> outstanding.
         </div>
@@ -106,7 +113,7 @@ export default function Dashboard() {
           <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Collected This Month</div>
+          <div className="kpi-label">Collected ({MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label.split(' ')[0] || ''})</div>
           <div className="kpi-value">${collectedThisMonth.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
@@ -154,7 +161,17 @@ export default function Dashboard() {
         </div>
 
         <div>
-          <h2 className="section-title">Rent Status — {now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
+            <select
+              className="form-input form-input-sm"
+              value={selectedMonth}
+              onChange={e => setSelectedMonth(e.target.value)}
+              style={{ width: 'auto' }}
+            >
+              {MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+            </select>
+          </div>
           <table>
             <thead>
               <tr><th>Tenant</th><th className="num">Rent</th><th>Status</th></tr>

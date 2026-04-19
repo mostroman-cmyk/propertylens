@@ -1,4 +1,5 @@
 const db = require('../db/db');
+const { calculateRentMonth } = require('./rentMonth');
 
 const RENT_TOLERANCE = 10;
 
@@ -44,9 +45,13 @@ async function autoMatchAll() {
 
   for (const tx of transactions) {
     const result = matchTransaction(tx, tenants);
+    let rent_month = null, needs_month_review = false;
+    if (result.tenant_id) {
+      ({ rent_month, needs_month_review } = calculateRentMonth(tx.date));
+    }
     await db.query(
-      `UPDATE transactions SET tenant_id=$1, match_confidence=$2, needs_review=$3 WHERE id=$4`,
-      [result.tenant_id, result.match_confidence, result.needs_review, tx.id]
+      `UPDATE transactions SET tenant_id=$1, match_confidence=$2, needs_review=$3, rent_month=$4, needs_month_review=$5 WHERE id=$6`,
+      [result.tenant_id, result.match_confidence, result.needs_review, rent_month, needs_month_review, tx.id]
     );
     if (result.match_confidence === 'exact')       exact++;
     else if (result.match_confidence === 'amount_only') amount_only++;

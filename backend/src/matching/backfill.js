@@ -1,4 +1,5 @@
 const db = require('../db/db');
+const { recalculateRentMonths } = require('./rentMonth');
 
 async function backfillPropertyTenant() {
   // Pass 1: tenant_id set → derive property_id
@@ -76,6 +77,8 @@ async function backfillPropertyTenant() {
     RETURNING transactions.id
   `);
   console.log(`[backfill] Backfilled from unique rent amount: ${pass3.rowCount} transactions`);
+
+  await recalculateRentMonths({ onlyNull: true });
 
   return {
     fromTenant:       pass1.rowCount,

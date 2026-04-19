@@ -36,7 +36,8 @@
       "Bash(node -e \"const path=require\\('path'\\); console.log\\(path.resolve\\('backend/src', '..', '..', 'frontend', 'dist'\\)\\)\")",
       "Bash(git add *)",
       "Bash(git commit -m ' *)",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(git commit -m 'Add rent_month column: early payment tracking separate from deposit date *)"
     ]
   }
 }
