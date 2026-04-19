@@ -59,6 +59,7 @@ export default function Transactions() {
   const [contextMenu, setContextMenu] = useState(null);
   const contextMenuRef = useRef(null);
 
+  const [editingCell, setEditingCell] = useState(null);
   const [filter, setFilter] = useState('all');
   const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
