@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings, api } from '../api';
 import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
+import LegacyCleanup from '../components/LegacyCleanup';
 
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -542,6 +543,15 @@ export default function Settings() {
               Removes any transactions linked to Plaid accounts that are no longer in your selection list.
             </p>
           </div>
+        </div>
+      )}
+
+      {/* ── SECTION 4: LEGACY CLEANUP ── */}
+      {connections.length > 0 && (
+        <div className="settings-section">
+          <div className="settings-section-title">Legacy Transaction Cleanup</div>
+          <p className="settings-section-desc">Transactions imported before account tracking was enabled have no account association. Use the tools below to resolve them.</p>
+          <LegacyCleanup showToast={showToast} />
         </div>
       )}
 

@@ -130,6 +130,65 @@ router.post('/cleanup-orphans', async (req, res) => {
   }
 });
 
+// Legacy = imported by Plaid but before plaid_account_id tracking was added
+const LEGACY_WHERE = `plaid_transaction_id IS NOT NULL AND plaid_account_id IS NULL`;
+
+// Stats on legacy transactions
+router.get('/legacy-stats', async (req, res) => {
+  try {
+    const { rows: [{ count }] } = await db.query(`SELECT COUNT(*) FROM transactions WHERE ${LEGACY_WHERE}`);
+    const { rows: samples } = await db.query(
+      `SELECT id, date, description, amount, type, category FROM transactions WHERE ${LEGACY_WHERE} ORDER BY date DESC LIMIT 30`
+    );
+    const { rows: connections } = await db.query(
+      'SELECT id, institution_name, enabled_account_ids FROM bank_connections ORDER BY created_at DESC'
+    );
+    res.json({ count: parseInt(count, 10), samples, connections });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Assign all legacy transactions to a specific plaid_account_id
+router.post('/legacy-assign', async (req, res) => {
+  const { account_id } = req.body;
+  if (!account_id) return res.status(400).json({ error: 'account_id required' });
+  try {
+    const result = await db.query(
+      `UPDATE transactions SET plaid_account_id=$1 WHERE ${LEGACY_WHERE} RETURNING id`,
+      [account_id]
+    );
+    console.log(`[legacy] Assigned ${result.rowCount} transactions to account ${account_id}`);
+    res.json({ assigned: result.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete all legacy transactions
+router.post('/legacy-delete', async (req, res) => {
+  try {
+    const result = await db.query(`DELETE FROM transactions WHERE ${LEGACY_WHERE} RETURNING id`);
+    console.log(`[legacy] Deleted ${result.rowCount} legacy transactions`);
+    res.json({ deleted: result.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete all legacy transactions then re-sync from Plaid (clean slate)
+router.post('/legacy-resync', async (req, res) => {
+  try {
+    const { rows: del } = await db.query(`DELETE FROM transactions WHERE ${LEGACY_WHERE} RETURNING id`);
+    console.log(`[legacy-resync] Deleted ${del.length} legacy transactions, starting fresh sync...`);
+    const { syncAll } = require('../plaid/sync');
+    const result = await syncAll();
+    res.json({ deleted: del.length, synced: result.synced, skipped: result.skipped, errors: result.errors });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post('/sync', async (req, res) => {
   try {
     const result = await syncAll();
