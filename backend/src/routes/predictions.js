@@ -5,6 +5,7 @@ const { predictAll } = require('../prediction/engine');
 
 const SELECT_PRED = `
   SELECT tx.*,
+    tx.normalized_description,
     p.name  AS property_name,
     t.name  AS tenant_name,
     pp.name AS predicted_property_name,
@@ -83,6 +84,29 @@ router.post('/:id/reject', async (req, res) => {
       WHERE id=$1
     `, [req.params.id]);
     res.json({ id: parseInt(req.params.id) });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk-accept a list of prediction IDs
+router.post('/bulk-accept', async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids required' });
+  try {
+    const result = await db.query(`
+      UPDATE transactions
+      SET category = COALESCE(predicted_category, category),
+          property_id = CASE WHEN predicted_property_scope = 'portfolio' THEN NULL ELSE COALESCE(predicted_property_id, property_id) END,
+          tenant_id = COALESCE(predicted_tenant_id, tenant_id),
+          property_scope = COALESCE(predicted_property_scope, property_scope, 'single'),
+          match_confidence = CASE WHEN predicted_tenant_id IS NOT NULL THEN 'exact' ELSE match_confidence END,
+          needs_review = false, prediction_accepted = true
+      WHERE id = ANY($1::int[])
+        AND (prediction_accepted IS NULL OR prediction_accepted = false)
+      RETURNING id
+    `, [ids]);
+    res.json({ accepted: result.rowCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

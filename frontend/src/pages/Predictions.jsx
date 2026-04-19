@@ -1,15 +1,21 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence } from '../api';
+import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence, bulkAcceptPredictions } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
-import { useSortState, sortRows, PRED_COL_DEFS } from '../utils/sort';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
-function ConfidenceBadge({ level }) {
-  if (level === 'HIGH')   return <span className="status-exact">● HIGH</span>;
-  if (level === 'MEDIUM') return <span className="status-amount">● MED</span>;
-  return <span className="status-review">● LOW</span>;
+function groupByNormalized(txs) {
+  const map = new Map();
+  for (const tx of txs) {
+    const key = tx.normalized_description || tx.description;
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(tx);
+  }
+  // Sort groups: largest first
+  return Array.from(map.entries())
+    .sort((a, b) => b[1].length - a[1].length)
+    .map(([key, items]) => ({ key, items }));
 }
 
 export default function Predictions() {
@@ -19,9 +25,9 @@ export default function Predictions() {
   const [loading, setLoading]         = useState(true);
   const [running, setRunning]         = useState(false);
   const [accepting, setAccepting]     = useState(false);
+  const [bulkAccepting, setBulkAccepting] = useState(null);
   const [editModal, setEditModal]     = useState(null);
   const { toast, showToast } = useToast();
-  const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
   const reload = useCallback(async () => {
     const data = await getPredictions();
@@ -40,7 +46,7 @@ export default function Predictions() {
       const result = await runPredictions();
       await reload();
       showToast(`Generated ${result.predicted} predictions (${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED) from ${result.total} uncategorized`);
-    } catch (err) {
+    } catch {
       showToast('Prediction failed');
     } finally {
       setRunning(false);
@@ -57,6 +63,19 @@ export default function Predictions() {
       showToast('Failed to accept predictions');
     } finally {
       setAccepting(false);
+    }
+  };
+
+  const handleBulkAccept = async (ids, label) => {
+    setBulkAccepting(label);
+    try {
+      const result = await bulkAcceptPredictions(ids);
+      setPredictions(prev => prev.filter(p => !ids.includes(p.id)));
+      showToast(`Accepted ${result.accepted} predictions`);
+    } catch {
+      showToast('Failed to accept');
+    } finally {
+      setBulkAccepting(null);
     }
   };
 
@@ -101,10 +120,8 @@ export default function Predictions() {
   if (loading) return <div className="loading">Loading...</div>;
 
   const highCount = predictions.filter(p => p.prediction_confidence === 'HIGH').length;
-  const medCount  = predictions.filter(p => p.prediction_confidence === 'MEDIUM').length;
-  const lowCount  = predictions.filter(p => p.prediction_confidence === 'LOW').length;
 
-  const groups = [
+  const confidenceTiers = [
     { label: 'HIGH',   txs: predictions.filter(p => p.prediction_confidence === 'HIGH')   },
     { label: 'MEDIUM', txs: predictions.filter(p => p.prediction_confidence === 'MEDIUM') },
     { label: 'LOW',    txs: predictions.filter(p => p.prediction_confidence === 'LOW')    },
@@ -113,10 +130,7 @@ export default function Predictions() {
   return (
     <div>
       <div className="page-header">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <h1 className="page-title">Predictions</h1>
-          {sortCol && <button className="btn-edit" onClick={resetSort}>Reset sort</button>}
-        </div>
+        <h1 className="page-title">Predictions</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={handleRunPredictions} disabled={running}>
             {running ? 'Running...' : 'Run Predictions'}
@@ -134,18 +148,12 @@ export default function Predictions() {
           <div className="kpi-label">Pending</div>
           <div className="kpi-value muted">{predictions.length}</div>
         </div>
-        <div className="kpi-item">
-          <div className="kpi-label">HIGH</div>
-          <div className="kpi-value">{highCount}</div>
-        </div>
-        <div className="kpi-item">
-          <div className="kpi-label">MEDIUM</div>
-          <div className="kpi-value muted">{medCount}</div>
-        </div>
-        <div className="kpi-item">
-          <div className="kpi-label">LOW</div>
-          <div className={`kpi-value${lowCount > 0 ? ' negative' : ' muted'}`}>{lowCount}</div>
-        </div>
+        {confidenceTiers.map(({ label, txs }) => (
+          <div className="kpi-item" key={label}>
+            <div className="kpi-label">{label}</div>
+            <div className={`kpi-value${label === 'LOW' && txs.length > 0 ? ' negative' : label === 'HIGH' ? '' : ' muted'}`}>{txs.length}</div>
+          </div>
+        ))}
       </div>
 
       {predictions.length === 0 && (
@@ -154,79 +162,87 @@ export default function Predictions() {
         </div>
       )}
 
-      {groups.map(({ label, txs }) => (
-        <div key={label} style={{ marginBottom: 32 }}>
-          <h2 className="section-title">
-            {label} — {txs.length} transaction{txs.length !== 1 ? 's' : ''}
-          </h2>
-          <table className="tx-table">
-            <colgroup>
-              <col style={{ width: 90 }} />
-              <col />
-              <col style={{ width: 100 }} />
-              <col style={{ width: 110 }} />
-              <col style={{ width: 140 }} />
-              <col style={{ width: 140 }} />
-              <col style={{ width: 180 }} />
-              <col style={{ width: 90 }} />
-            </colgroup>
-            <thead>
-              <tr>
-                {[
-                  { col: 'date',               label: 'Date' },
-                  { col: 'description',        label: 'Description' },
-                  { col: 'amount',             label: 'Amount',             cls: 'num' },
-                  { col: 'predicted_category', label: 'Predicted Category' },
-                  { col: 'property',           label: 'Property' },
-                  { col: 'tenant',             label: 'Tenant' },
-                ].map(({ col, label, cls }) => (
-                  <th key={col} className={[cls, 'sortable', sortCol === col ? 'sort-active' : ''].filter(Boolean).join(' ')} onClick={() => handleSort(col)}>
-                    {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
-                  </th>
-                ))}
-                <th>Reasoning</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortRows(txs, sortCol, sortDir, PRED_COL_DEFS).map(tx => (
-                <tr key={tx.id}>
-                  <td className="nowrap mono" style={{ fontSize: 11 }}>
-                    {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                  </td>
-                  <td className="col-desc" title={tx.description}>{tx.description}</td>
-                  <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-                  <td className="nowrap" style={{ fontWeight: 600 }}>{tx.predicted_category}</td>
-                  <td style={{ color: '#666' }}>{tx.predicted_property_name || '—'}</td>
-                  <td style={{ color: '#666' }}>{tx.predicted_tenant_name   || '—'}</td>
-                  <td style={{ color: '#888', maxWidth: 200 }} title={tx.prediction_reasoning}>
-                    {tx.prediction_reasoning}
-                  </td>
-                  <td className="nowrap" style={{ width: 90 }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => handleAccept(tx)}
-                        style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-                        title="Accept"
-                      >✓</button>
-                      <button
-                        onClick={() => handleReject(tx)}
-                        style={{ background: 'none', border: '1px solid #E30613', color: '#E30613', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}
-                        title="Reject"
-                      >✗</button>
-                      <button
-                        onClick={() => openEdit(tx)}
-                        style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#666' }}
-                        title="Edit then accept"
-                      >✎</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ))}
+      {confidenceTiers.map(({ label, txs }) => {
+        const groups = groupByNormalized(txs);
+        return (
+          <div key={label} style={{ marginBottom: 40 }}>
+            <h2 className="section-title" style={{ marginBottom: 16 }}>
+              {label} — {txs.length} transaction{txs.length !== 1 ? 's' : ''}
+            </h2>
+
+            {groups.map(({ key, items }) => (
+              <div key={key} style={{ marginBottom: 24 }}>
+                {/* Group header */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: '#F5F5F5', border: '1px solid #E5E5E5', borderBottom: 'none', borderRadius: '2px 2px 0 0' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{ fontWeight: 600, fontSize: 13 }}>{items[0].predicted_category}</span>
+                    <span style={{ color: '#888', fontSize: 12 }}>"{key}"</span>
+                    {items[0].predicted_property_name && (
+                      <span style={{ color: '#666', fontSize: 12 }}>· {items[0].predicted_property_name}</span>
+                    )}
+                    {items[0].predicted_tenant_name && (
+                      <span style={{ color: '#666', fontSize: 12 }}>· {items[0].predicted_tenant_name}</span>
+                    )}
+                  </div>
+                  {items.length > 1 && (
+                    <button
+                      onClick={() => handleBulkAccept(items.map(i => i.id), key)}
+                      disabled={bulkAccepting === key}
+                      style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                    >
+                      {bulkAccepting === key ? 'Accepting...' : `Accept all ${items.length}`}
+                    </button>
+                  )}
+                </div>
+
+                {/* Group rows */}
+                <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
+                  <colgroup>
+                    <col style={{ width: 90 }} />
+                    <col />
+                    <col style={{ width: 100 }} />
+                    <col style={{ width: 220 }} />
+                    <col style={{ width: 90 }} />
+                  </colgroup>
+                  <tbody>
+                    {items.map(tx => (
+                      <tr key={tx.id}>
+                        <td className="nowrap mono" style={{ fontSize: 11 }}>
+                          {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                        </td>
+                        <td className="col-desc" title={tx.description} style={{ color: '#555' }}>{tx.description}</td>
+                        <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                        <td style={{ color: '#888', fontSize: 12 }} title={tx.prediction_reasoning}>
+                          {tx.prediction_reasoning}
+                        </td>
+                        <td className="nowrap">
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              onClick={() => handleAccept(tx)}
+                              style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
+                              title="Accept"
+                            >✓</button>
+                            <button
+                              onClick={() => handleReject(tx)}
+                              style={{ background: 'none', border: '1px solid #E30613', color: '#E30613', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}
+                              title="Reject"
+                            >✗</button>
+                            <button
+                              onClick={() => openEdit(tx)}
+                              style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#666' }}
+                              title="Edit then accept"
+                            >✎</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        );
+      })}
 
       {editModal && (
         <Modal

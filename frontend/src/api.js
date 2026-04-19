@@ -31,6 +31,7 @@ export const runPredictions           = ()         => api.post('/predictions/pre
 export const acceptPrediction         = (id, data) => api.post(`/predictions/${id}/accept`, data || {}).then(r => r.data);
 export const rejectPrediction         = (id)       => api.post(`/predictions/${id}/reject`).then(r => r.data);
 export const acceptAllHighConfidence  = ()         => api.post('/predictions/accept-all-high').then(r => r.data);
+export const bulkAcceptPredictions    = (ids)      => api.post('/predictions/bulk-accept', { ids }).then(r => r.data);
 
 export const getCategorizationRules    = ()      => api.get('/categorization-rules').then(r => r.data);
 export const createCategorizationRule  = (data)  => api.post('/categorization-rules', data).then(r => r.data);

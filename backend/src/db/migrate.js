@@ -247,6 +247,21 @@ async function migrate() {
 
   await db.query(`ALTER TABLE bank_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`);
 
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS normalized_description TEXT`);
+
+  // Backfill normalized_description for any rows missing it
+  const { normalizeDescription } = require('../prediction/engine');
+  const { rows: missingNorm } = await db.query(
+    'SELECT id, description FROM transactions WHERE normalized_description IS NULL'
+  );
+  for (const row of missingNorm) {
+    await db.query('UPDATE transactions SET normalized_description=$1 WHERE id=$2',
+      [normalizeDescription(row.description), row.id]);
+  }
+  if (missingNorm.length > 0) {
+    console.log(`[migrate] Backfilled normalized_description for ${missingNorm.length} transactions`);
+  }
+
   console.log('[migrate] Database ready');
 }
 

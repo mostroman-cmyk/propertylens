@@ -33,9 +33,10 @@ router.get('/', async (req, res) => {
 router.post('/', async (req, res) => {
   const { date, description, amount, type, category } = req.body;
   try {
+    const { normalizeDescription } = require('../prediction/engine');
     const result = await db.query(
-      'INSERT INTO transactions (date, description, amount, type, category) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [date, description, amount, type, category]
+      'INSERT INTO transactions (date, description, normalized_description, amount, type, category) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
+      [date, description, normalizeDescription(description), amount, type, category]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
