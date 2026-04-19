@@ -192,14 +192,20 @@ async function migrate() {
 
   // Seed portfolio-wide categorization rules (idempotent by keyword)
   const portfolioRules = [
-    ['UMBRELLA',          'Insurance',            'expense', 10],
-    ['LLC',               'Legal',                'expense', 10],
-    ['BUSINESS LICENSE',  'Legal',                'expense', 10],
-    ['QUICKBOOKS',        'Software',             'expense', 10],
-    ['TURBOTAX',          'Software',             'expense', 10],
-    ['ACCOUNTANT',        'Professional Services','expense', 10],
-    ['CPA',               'Professional Services','expense', 10],
-    ['BOOKKEEPING',       'Professional Services','expense', 10],
+    ['UMBRELLA',              'Insurance',            'expense', 10],
+    ['LLC',                   'Legal',                'expense', 10],
+    ['BUSINESS LICENSE',      'Legal',                'expense', 10],
+    ['SECRETARY OF STATE',    'Legal',                'expense', 10],
+    ['FRANCHISE TAX BOARD',   'Legal',                'expense', 10],
+    ['ATTORNEY',              'Legal',                'expense', 10],
+    ['LAWYER',                'Legal',                'expense', 10],
+    ['LEGALZOOM',             'Legal',                'expense', 10],
+    ['QUICKBOOKS',            'Software',             'expense', 10],
+    ['TURBOTAX',              'Software',             'expense', 10],
+    ['STESSA',                'Software',             'expense', 10],
+    ['ACCOUNTANT',            'Professional Services','expense', 10],
+    ['CPA',                   'Professional Services','expense', 10],
+    ['BOOKKEEPING',           'Professional Services','expense', 10],
   ];
   for (const [keyword, category, type, priority] of portfolioRules) {
     const { rows } = await db.query('SELECT id FROM categorization_rules WHERE keyword=$1', [keyword]);

@@ -185,8 +185,9 @@ export default function Transactions() {
   };
 
   const filtered = transactions.filter(tx => {
-    if (filter === 'unmatched') return tx.type === 'income' && !tx.tenant_id;
-    if (filter === 'ambiguous') return tx.needs_review;
+    if (filter === 'unmatched')  return tx.type === 'income' && !tx.tenant_id;
+    if (filter === 'ambiguous')  return tx.needs_review;
+    if (filter === 'portfolio')  return tx.property_scope === 'portfolio';
     return true;
   });
 
@@ -197,6 +198,7 @@ export default function Transactions() {
   const expenses  = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
   const unmatched = transactions.filter(t => t.type === 'income' && !t.tenant_id).length;
   const ambiguous = transactions.filter(t => t.needs_review).length;
+  const portfolio = transactions.filter(t => t.property_scope === 'portfolio').length;
 
   return (
     <div>
@@ -237,6 +239,7 @@ export default function Transactions() {
         <div className="filter-tabs">
           {[
             { key: 'all',       label: `All (${transactions.length})` },
+            { key: 'portfolio', label: `All Properties (${portfolio})` },
             { key: 'unmatched', label: `Unmatched rent (${unmatched})` },
             { key: 'ambiguous', label: `Needs review (${ambiguous})` },
           ].map(({ key, label }) => (
@@ -378,7 +381,8 @@ export default function Transactions() {
               }}
             >
               <option value="__portfolio__">🏘 All Properties (Portfolio)</option>
-              <option value="">— None —</option>
+              <option disabled>──────────────</option>
+              <option value="">— None / Untagged —</option>
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
