@@ -60,6 +60,10 @@ export default function Settings() {
   const [portfolioAllocation, setPortfolioAllocation] = useState('equal');
   const [savingAllocation, setSavingAllocation] = useState(false);
 
+  const [accountConfirm, setAccountConfirm] = useState(null);
+  // { connId, deselected: [{account_id, count}], total_count, newAccountIds, addedCount, accountNames }
+  const [cleaningUp, setCleaningUp] = useState(false);
+
   // Bank connections state
   const [connections, setConnections] = useState([]);
   const [connectionAccounts, setConnectionAccounts] = useState({});
@@ -169,16 +173,72 @@ export default function Settings() {
   };
 
   const handleSaveAccounts = async (connId) => {
+    const conn = connections.find(c => c.id === connId);
+    const savedIds = conn?.enabled_account_ids || [];
+    const newIds = pendingSelections[connId] || [];
+    const deselectedIds = savedIds.filter(id => !newIds.includes(id));
+    const addedIds = newIds.filter(id => !savedIds.includes(id));
+
+    if (deselectedIds.length > 0) {
+      // Count transactions that would be removed, then show confirm dialog
+      setSavingAccounts(prev => ({ ...prev, [connId]: true }));
+      try {
+        const { data } = await api.post(`/plaid/connections/${connId}/count-deselected`, { new_account_ids: newIds });
+        const accounts = connectionAccounts[connId] || [];
+        const accountNames = deselectedIds.map(id => {
+          const acct = accounts.find(a => a.account_id === id);
+          return acct ? `${acct.name} (····${acct.mask})` : id;
+        });
+        setAccountConfirm({ connId, deselected: data.deselected, total_count: data.total_count, newAccountIds: newIds, addedCount: addedIds.length, accountNames });
+      } catch {
+        showToast('Failed to check transaction counts');
+      } finally {
+        setSavingAccounts(prev => ({ ...prev, [connId]: false }));
+      }
+      return;
+    }
+
+    // No deselection — save directly
+    await doSaveAccounts(connId, newIds, false, addedIds.length);
+  };
+
+  const doSaveAccounts = async (connId, accountIds, deleteDeselected, addedCount) => {
     setSavingAccounts(prev => ({ ...prev, [connId]: true }));
     try {
-      const account_ids = pendingSelections[connId] || [];
-      await api.put(`/plaid/connections/${connId}/accounts`, { account_ids });
-      setConnections(prev => prev.map(c => c.id === connId ? { ...c, enabled_account_ids: account_ids } : c));
-      showToast('Account selection saved');
+      const { data } = await api.put(`/plaid/connections/${connId}/accounts`, {
+        account_ids: accountIds,
+        delete_deselected: deleteDeselected,
+      });
+      setConnections(prev => prev.map(c => c.id === connId ? { ...c, enabled_account_ids: accountIds } : c));
+      setAccountConfirm(null);
+      const parts = [];
+      if (addedCount > 0) parts.push(`+${addedCount} account${addedCount !== 1 ? 's' : ''} pending sync`);
+      if (data.removed_count > 0) parts.push(`-${data.removed_count} transaction${data.removed_count !== 1 ? 's' : ''} removed`);
+      showToast(parts.length ? `Account settings updated: ${parts.join(', ')}` : 'Account selection saved');
     } catch {
       showToast('Failed to save account selection');
     } finally {
       setSavingAccounts(prev => ({ ...prev, [connId]: false }));
+    }
+  };
+
+  const cancelAccountConfirm = () => {
+    if (!accountConfirm) return;
+    // Revert pending selection back to what was saved
+    const conn = connections.find(c => c.id === accountConfirm.connId);
+    setPendingSelections(prev => ({ ...prev, [accountConfirm.connId]: conn?.enabled_account_ids || [] }));
+    setAccountConfirm(null);
+  };
+
+  const handleCleanupOrphans = async () => {
+    setCleaningUp(true);
+    try {
+      const { data } = await api.post('/plaid/cleanup-orphans');
+      showToast(data.removed > 0 ? `Removed ${data.removed} orphaned transaction${data.removed !== 1 ? 's' : ''}` : 'No orphaned transactions found');
+    } catch {
+      showToast('Cleanup failed');
+    } finally {
+      setCleaningUp(false);
     }
   };
 
@@ -395,6 +455,32 @@ export default function Settings() {
           <div className="settings-section-title">Account Selection</div>
           <p className="settings-section-desc">Choose which accounts to include when syncing transactions.</p>
 
+          {/* Confirmation dialog for deselecting accounts */}
+          {accountConfirm && (
+            <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8 }}>
+                Remove transactions from {accountConfirm.accountNames.length === 1 ? accountConfirm.accountNames[0] : `${accountConfirm.accountNames.length} accounts`}?
+              </div>
+              <p style={{ fontSize: 13, color: '#555', margin: '0 0 12px' }}>
+                {accountConfirm.accountNames.join(', ')} will be deselected.
+                {accountConfirm.total_count > 0
+                  ? ` This will permanently remove ${accountConfirm.total_count} transaction${accountConfirm.total_count !== 1 ? 's' : ''} linked to ${accountConfirm.accountNames.length === 1 ? 'that account' : 'those accounts'} from your database.`
+                  : ' No transactions are linked to those accounts (they may have been added before account tracking was enabled).'}
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn-primary"
+                  style={{ background: '#E30613', borderColor: '#E30613' }}
+                  disabled={savingAccounts[accountConfirm.connId]}
+                  onClick={() => doSaveAccounts(accountConfirm.connId, accountConfirm.newAccountIds, true, accountConfirm.addedCount)}
+                >
+                  {savingAccounts[accountConfirm.connId] ? 'Removing...' : `Yes, remove ${accountConfirm.total_count > 0 ? accountConfirm.total_count + ' ' : ''}transaction${accountConfirm.total_count !== 1 ? 's' : ''}`}
+                </button>
+                <button className="btn-edit" onClick={cancelAccountConfirm}>Cancel</button>
+              </div>
+            </div>
+          )}
+
           {connections.map(conn => {
             const accounts = connectionAccounts[conn.id];
             const selected = pendingSelections[conn.id] || [];
@@ -428,10 +514,10 @@ export default function Settings() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
                       <button
                         className="btn-primary"
-                        disabled={isSaving || selected.length === 0 || !selectionChanged}
+                        disabled={isSaving || selected.length === 0 || !selectionChanged || !!accountConfirm}
                         onClick={() => handleSaveAccounts(conn.id)}
                       >
-                        {isSaving ? 'Saving...' : 'Save Selection'}
+                        {isSaving ? 'Checking...' : 'Save Selection'}
                       </button>
                       {savedIds.length > 0 && !selectionChanged && (
                         <span style={{ fontSize: 11, color: '#666' }}>
@@ -447,6 +533,15 @@ export default function Settings() {
               </div>
             );
           })}
+
+          <div style={{ borderTop: '1px solid #E5E5E5', paddingTop: 16, marginTop: 8 }}>
+            <button className="btn-secondary" onClick={handleCleanupOrphans} disabled={cleaningUp}>
+              {cleaningUp ? 'Scanning...' : 'Clean up orphaned transactions'}
+            </button>
+            <p style={{ fontSize: 12, color: '#888', marginTop: 8, marginBottom: 0 }}>
+              Removes any transactions linked to Plaid accounts that are no longer in your selection list.
+            </p>
+          </div>
         </div>
       )}
 

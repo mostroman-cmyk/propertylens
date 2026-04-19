@@ -90,11 +90,11 @@ async function syncAll() {
           if (tx.pending) { skipped++; continue; }
           const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
           const result = await client.query(
-            `INSERT INTO transactions (date, description, amount, type, category, plaid_transaction_id)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO transactions (date, description, amount, type, category, plaid_transaction_id, plaid_account_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
              ON CONFLICT (plaid_transaction_id) DO NOTHING
              RETURNING id`,
-            [tx.date, tx.name, storedAmount, type, category, tx.transaction_id]
+            [tx.date, tx.name, storedAmount, type, category, tx.transaction_id, tx.account_id]
           );
           if (result.rowCount > 0) { synced++; newTxIds.push(result.rows[0].id); }
           else skipped++;

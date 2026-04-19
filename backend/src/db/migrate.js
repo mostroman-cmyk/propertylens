@@ -182,6 +182,8 @@ async function migrate() {
   const { recalculateRentMonths } = require('../matching/rentMonth');
   await recalculateRentMonths({ onlyNull: true });
 
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS plaid_account_id TEXT`);
+
   // Portfolio-wide scope support
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS property_scope TEXT DEFAULT 'single'`);
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS predicted_property_scope TEXT`);

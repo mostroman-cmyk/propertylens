@@ -53,16 +53,78 @@ router.get('/accounts/:connectionId', async (req, res) => {
   }
 });
 
-// Save selected account IDs for a connection
+// Count how many transactions would be removed for the accounts being deselected
+router.post('/connections/:connectionId/count-deselected', async (req, res) => {
+  const { new_account_ids } = req.body;
+  if (!Array.isArray(new_account_ids)) return res.status(400).json({ error: 'new_account_ids required' });
+  try {
+    const { rows: [conn] } = await db.query('SELECT enabled_account_ids FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+    const oldIds = conn.enabled_account_ids || [];
+    const deselected = oldIds.filter(id => !new_account_ids.includes(id));
+    if (deselected.length === 0) return res.json({ deselected: [], total_count: 0 });
+
+    const counts = [];
+    let totalCount = 0;
+    for (const account_id of deselected) {
+      const { rows } = await db.query(
+        'SELECT COUNT(*) FROM transactions WHERE plaid_account_id=$1',
+        [account_id]
+      );
+      const count = parseInt(rows[0].count, 10);
+      counts.push({ account_id, count });
+      totalCount += count;
+    }
+    res.json({ deselected: counts, total_count: totalCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Save selected account IDs for a connection, optionally deleting deselected account transactions
 router.put('/connections/:connectionId/accounts', async (req, res) => {
-  const { account_ids } = req.body;
+  const { account_ids, delete_deselected } = req.body;
   if (!Array.isArray(account_ids)) return res.status(400).json({ error: 'account_ids must be an array' });
   try {
+    const { rows: [conn] } = await db.query('SELECT enabled_account_ids FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    const oldIds = conn?.enabled_account_ids || [];
+    const deselected = oldIds.filter(id => !account_ids.includes(id));
+
+    let removedCount = 0;
+    if (delete_deselected && deselected.length > 0) {
+      const result = await db.query(
+        'DELETE FROM transactions WHERE plaid_account_id = ANY($1::text[]) RETURNING id',
+        [deselected]
+      );
+      removedCount = result.rowCount;
+      console.log(`[accounts] Removed ${removedCount} transactions from deselected accounts: ${deselected.join(', ')}`);
+    }
+
+    const addedIds = account_ids.filter(id => !oldIds.includes(id));
     await db.query(
       'UPDATE bank_connections SET enabled_account_ids = $1 WHERE id = $2',
       [JSON.stringify(account_ids), req.params.connectionId]
     );
-    res.json({ success: true, account_ids });
+    res.json({ success: true, account_ids, removed_count: removedCount, added_count: addedIds.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete all transactions whose plaid_account_id is not in any enabled account list
+router.post('/cleanup-orphans', async (req, res) => {
+  try {
+    const { rows: connections } = await db.query('SELECT enabled_account_ids FROM bank_connections');
+    const allEnabled = connections.flatMap(c => c.enabled_account_ids || []);
+    if (allEnabled.length === 0) {
+      return res.json({ removed: 0, message: 'No enabled accounts configured' });
+    }
+    const result = await db.query(
+      'DELETE FROM transactions WHERE plaid_account_id IS NOT NULL AND NOT (plaid_account_id = ANY($1::text[])) RETURNING id',
+      [allEnabled]
+    );
+    console.log(`[cleanup] Removed ${result.rowCount} orphaned transactions`);
+    res.json({ removed: result.rowCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
