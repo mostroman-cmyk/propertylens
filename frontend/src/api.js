@@ -37,3 +37,7 @@ export const createCategorizationRule  = (data)  => api.post('/categorization-ru
 export const deleteCategorizationRule  = (id)    => api.delete(`/categorization-rules/${id}`).then(r => r.data);
 
 export const getPropertyPL = (year) => api.get('/reports/property-pl', { params: { year } }).then(r => r.data);
+
+export const getTenantAliases  = (id)            => api.get(`/tenants/${id}/aliases`).then(r => r.data);
+export const addTenantAlias    = (id, alias)      => api.post(`/tenants/${id}/aliases`, { alias }).then(r => r.data);
+export const deleteTenantAlias = (id, aliasId)    => api.delete(`/tenants/${id}/aliases/${aliasId}`).then(r => r.data);

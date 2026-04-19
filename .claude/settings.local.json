@@ -38,7 +38,8 @@
       "Bash(git commit -m ' *)",
       "Bash(git push *)",
       "Bash(git commit -m 'Add rent_month column: early payment tracking separate from deposit date *)",
-      "Bash(railway up *)"
+      "Bash(railway up *)",
+      "Read(//c/c/Users/mostr/test project/frontend/src/**)"
     ]
   }
 }

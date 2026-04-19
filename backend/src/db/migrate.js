@@ -222,6 +222,29 @@ async function migrate() {
     `INSERT INTO settings (key, value) VALUES ('portfolio_allocation', 'equal') ON CONFLICT (key) DO NOTHING`
   );
 
+  // Tenant matching improvements
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS tenant_aliases (
+      id         SERIAL PRIMARY KEY,
+      tenant_id  INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      alias      TEXT NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, alias)
+    )
+  `);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS tenant_payment_patterns (
+      id               SERIAL PRIMARY KEY,
+      tenant_id        INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      pattern_keyword  TEXT NOT NULL,
+      match_count      INTEGER NOT NULL DEFAULT 1,
+      last_seen        TIMESTAMPTZ DEFAULT NOW(),
+      created_at       TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (tenant_id, pattern_keyword)
+    )
+  `);
+
   console.log('[migrate] Database ready');
 }
 

@@ -94,6 +94,8 @@ export default function Dashboard() {
   const totalExpenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
   const netIncome = totalIncome - totalExpenses;
 
+  const unmatchedIncome = transactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
+
   const collectedThisMonth = transactions
     .filter(tx => tx.type === 'income' && tx.tenant_id && tx.rent_month === selectedMonth)
     .reduce((s, tx) => s + parseFloat(tx.amount), 0);
@@ -126,6 +128,15 @@ export default function Dashboard() {
 
       {syncResult && (
         <div className={`alert ${alertClass[syncResult.type]}`}>{syncResult.message}</div>
+      )}
+
+      {unmatchedIncome > 0 && (
+        <div className="alert alert-info" style={{ marginBottom: 8 }}>
+          {unmatchedIncome} income deposit{unmatchedIncome !== 1 ? 's' : ''} not yet matched to a tenant.{' '}
+          <a href="/transactions" style={{ color: 'inherit', fontWeight: 600, textDecoration: 'underline' }}>
+            Review in Transactions → Unmatched rent tab
+          </a>
+        </div>
       )}
 
       {unpaidTenants.length > 0 ? (

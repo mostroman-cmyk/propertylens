@@ -30,10 +30,13 @@ function MatchStatus({ tx, onAssign }) {
     return <span className="status-exact" onClick={() => onAssign(tx)} title="Click to reassign">● {tx.tenant_name}</span>;
   }
   if (tx.match_confidence === 'amount_only') {
-    return <span className="status-amount" onClick={() => onAssign(tx)} title="Click to reassign">● {tx.tenant_name}</span>;
+    return <span className="status-amount" onClick={() => onAssign(tx)} title="Matched by amount only — click to reassign">● {tx.tenant_name}</span>;
+  }
+  if (tx.match_confidence === 'partial') {
+    return <span className="status-amount" onClick={() => onAssign(tx)} title="Partial amount match — click to confirm">~ {tx.tenant_name}</span>;
   }
   if (tx.match_confidence === 'ambiguous' || tx.needs_review) {
-    return <span className="status-review" onClick={() => onAssign(tx)} title="Click to assign">● REVIEW</span>;
+    return <span className="status-review" onClick={() => onAssign(tx)} title="Multiple tenants match — click to assign">● REVIEW</span>;
   }
   return <span className="status-none" onClick={() => onAssign(tx)} title="Click to assign">—</span>;
 }
@@ -53,6 +56,7 @@ export default function Transactions() {
   const [assignModal, setAssignModal] = useState(null);
   const [assignTenantId, setAssignTenantId] = useState('');
   const [assignSaving, setAssignSaving] = useState(false);
+  const [learnPattern, setLearnPattern] = useState(false);
 
   const [ruleModal, setRuleModal] = useState(null);
 
@@ -111,7 +115,19 @@ export default function Transactions() {
   };
 
   const openAssign = (tx) => {
-    setAssignTenantId(tx.tenant_id ? String(tx.tenant_id) : '');
+    // Pre-select: existing tenant if set, otherwise closest by rent amount
+    if (tx.tenant_id) {
+      setAssignTenantId(String(tx.tenant_id));
+    } else if (tenants.length > 0) {
+      const txAmt = parseFloat(tx.amount);
+      const closest = [...tenants].sort((a, b) =>
+        Math.abs(parseFloat(a.monthly_rent) - txAmt) - Math.abs(parseFloat(b.monthly_rent) - txAmt)
+      )[0];
+      setAssignTenantId(String(closest.id));
+    } else {
+      setAssignTenantId('');
+    }
+    setLearnPattern(false);
     setAssignModal(tx);
     setContextMenu(null);
   };
@@ -119,9 +135,12 @@ export default function Transactions() {
   const handleAssignSave = async () => {
     setAssignSaving(true);
     try {
-      const updated = await assignTenant(assignModal.id, { tenant_id: assignTenantId ? parseInt(assignTenantId) : null });
+      const updated = await assignTenant(assignModal.id, {
+        tenant_id: assignTenantId ? parseInt(assignTenantId) : null,
+        learn_pattern: learnPattern,
+      });
       setTransactions(txs => txs.map(t => t.id === assignModal.id ? updated : t));
-      showToast('Tenant assigned');
+      showToast(learnPattern ? 'Tenant assigned — payer pattern saved for future matching' : 'Tenant assigned');
       setAssignModal(null);
     } catch {
       showToast('Failed to assign tenant');
@@ -134,7 +153,13 @@ export default function Transactions() {
     try {
       const result = await autoMatchRent();
       await reload();
-      showToast(`Matched: ${result.exact} exact, ${result.amount_only} amount-only, ${result.ambiguous} ambiguous, ${result.none} no match`);
+      const parts = [];
+      if (result.pattern)     parts.push(`${result.pattern} via pattern`);
+      if (result.exact)       parts.push(`${result.exact} exact`);
+      if (result.amount_only) parts.push(`${result.amount_only} amount-only`);
+      if (result.partial)     parts.push(`${result.partial} partial`);
+      if (result.ambiguous)   parts.push(`${result.ambiguous} ambiguous`);
+      showToast(`Matched ${result.matched} of ${result.total}: ${parts.join(', ')}`);
     } catch {
       showToast('Auto-match failed');
     }
@@ -389,21 +414,39 @@ export default function Transactions() {
         </Modal>
       )}
 
-      {assignModal && (
-        <Modal title="Assign Tenant" onClose={() => setAssignModal(null)} onSave={handleAssignSave} saving={assignSaving}>
-          <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
-            <strong>{assignModal.description}</strong>
-            <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(assignModal.amount)).toLocaleString()}</span>
-          </div>
-          <div className="form-group">
-            <label>Tenant</label>
-            <select className="form-input" value={assignTenantId} onChange={e => setAssignTenantId(e.target.value)}>
-              <option value="">— Unassign —</option>
-              {tenants.map(t => <option key={t.id} value={t.id}>{t.name} (${parseFloat(t.monthly_rent).toLocaleString()}/mo)</option>)}
-            </select>
-          </div>
-        </Modal>
-      )}
+      {assignModal && (() => {
+        const txAmt = parseFloat(assignModal.amount);
+        const sortedTenants = [...tenants].sort((a, b) =>
+          Math.abs(parseFloat(a.monthly_rent) - txAmt) - Math.abs(parseFloat(b.monthly_rent) - txAmt)
+        );
+        return (
+          <Modal title="Assign Tenant" onClose={() => setAssignModal(null)} onSave={handleAssignSave} saving={assignSaving}>
+            <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
+              <strong>{assignModal.description}</strong>
+              <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(txAmt).toLocaleString()}</span>
+            </div>
+            <div className="form-group">
+              <label>Tenant</label>
+              <select className="form-input" value={assignTenantId} onChange={e => setAssignTenantId(e.target.value)}>
+                <option value="">— Unassign —</option>
+                {sortedTenants.map(t => {
+                  const delta = parseFloat(t.monthly_rent) - txAmt;
+                  const deltaLabel = Math.abs(delta) < 1 ? 'exact match' : `${delta > 0 ? '+' : ''}$${Math.abs(delta).toFixed(0)} from rent`;
+                  return (
+                    <option key={t.id} value={t.id}>
+                      {t.name} — ${parseFloat(t.monthly_rent).toLocaleString()}/mo ({deltaLabel})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginTop: 4 }}>
+              <input type="checkbox" checked={learnPattern} onChange={e => setLearnPattern(e.target.checked)} />
+              Remember this payer — auto-match future deposits from this description to this tenant
+            </label>
+          </Modal>
+        );
+      })()}
 
       {ruleModal && (
         <Modal

@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
-const { autoMatchAll } = require('../matching/rentMatcher');
+const { autoMatchAll, learnPattern } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
 const { backfillPropertyTenant } = require('../matching/backfill');
 const { calculateRentMonth, recalculateRentMonths } = require('../matching/rentMonth');
@@ -55,7 +55,7 @@ router.put('/:id', async (req, res) => {
 
 // Manually assign a tenant to a transaction; auto-fills property_id from tenant if not set
 router.put('/:id/assign-tenant', async (req, res) => {
-  const { tenant_id } = req.body;
+  const { tenant_id, learn_pattern } = req.body;
   try {
     const confidence = tenant_id ? 'exact' : null;
     if (tenant_id) {
@@ -69,6 +69,9 @@ router.put('/:id/assign-tenant', async (req, res) => {
          WHERE id=$5`,
         [tenant_id, confidence, rent_month, needs_month_review, req.params.id]
       );
+      if (learn_pattern) {
+        await learnPattern(req.params.id, tenant_id);
+      }
     } else {
       await db.query(
         'UPDATE transactions SET tenant_id=NULL, match_confidence=NULL, needs_review=false, rent_month=NULL, needs_month_review=false WHERE id=$1',

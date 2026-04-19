@@ -63,4 +63,40 @@ router.put('/:id', async (req, res) => {
   }
 });
 
+// Alias management for tenant matching
+router.get('/:id/aliases', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT id, alias, created_at FROM tenant_aliases WHERE tenant_id=$1 ORDER BY created_at',
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+router.post('/:id/aliases', async (req, res) => {
+  const alias = (req.body.alias || '').trim().toLowerCase();
+  if (!alias) return res.status(400).json({ error: 'alias is required' });
+  try {
+    const { rows } = await db.query(
+      'INSERT INTO tenant_aliases (tenant_id, alias) VALUES ($1, $2) RETURNING *',
+      [req.params.id, alias]
+    );
+    res.status(201).json(rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.status(409).json({ error: 'Alias already exists' });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/:id/aliases/:aliasId', async (req, res) => {
+  try {
+    await db.query(
+      'DELETE FROM tenant_aliases WHERE id=$1 AND tenant_id=$2',
+      [req.params.aliasId, req.params.id]
+    );
+    res.json({ deleted: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 module.exports = router;

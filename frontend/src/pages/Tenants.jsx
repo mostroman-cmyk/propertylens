@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { getTenants, getProperties, createTenant, updateTenant } from '../api';
+import { getTenants, getProperties, createTenant, updateTenant, getTenantAliases, addTenantAlias, deleteTenantAlias } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -14,6 +14,11 @@ export default function Tenants() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
+
+  const [aliases, setAliases] = useState([]);
+  const [newAlias, setNewAlias] = useState('');
+  const [aliasError, setAliasError] = useState(null);
+
   const { toast, showToast } = useToast();
 
   useEffect(() => {
@@ -23,21 +28,26 @@ export default function Tenants() {
       .finally(() => setLoading(false));
   }, []);
 
-  const openEdit = (tenant) => {
-    setForm({
-      name: tenant.name,
-      unit: tenant.unit,
-      monthly_rent: tenant.monthly_rent,
-      property_id: tenant.property_id,
-    });
+  const openEdit = async (tenant) => {
+    setForm({ name: tenant.name, unit: tenant.unit, monthly_rent: tenant.monthly_rent, property_id: tenant.property_id });
     setModal(tenant);
     setModalError(null);
+    setNewAlias('');
+    setAliasError(null);
+    setAliases([]);
+    try {
+      const data = await getTenantAliases(tenant.id);
+      setAliases(data);
+    } catch { /* show empty list */ }
   };
 
   const openAdd = () => {
     setForm({ ...EMPTY_FORM, property_id: properties[0]?.id || '' });
     setModal({});
     setModalError(null);
+    setAliases([]);
+    setNewAlias('');
+    setAliasError(null);
   };
 
   const handleSave = async () => {
@@ -63,6 +73,27 @@ export default function Tenants() {
       setModalError(err.response?.data?.error || 'Save failed');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAddAlias = async () => {
+    if (!newAlias.trim()) return;
+    setAliasError(null);
+    try {
+      const created = await addTenantAlias(modal.id, newAlias.trim());
+      setAliases(a => [...a, created]);
+      setNewAlias('');
+    } catch (err) {
+      setAliasError(err.response?.data?.error || 'Failed to add alias');
+    }
+  };
+
+  const handleDeleteAlias = async (aliasId) => {
+    try {
+      await deleteTenantAlias(modal.id, aliasId);
+      setAliases(a => a.filter(x => x.id !== aliasId));
+    } catch {
+      setAliasError('Failed to remove alias');
     }
   };
 
@@ -146,6 +177,33 @@ export default function Tenants() {
               ))}
             </select>
           </div>
+
+          {modal.id && (
+            <div style={{ borderTop: '1px solid #E5E5E5', paddingTop: 14, marginTop: 8 }}>
+              <label style={{ display: 'block', marginBottom: 4 }}>Payment Aliases</label>
+              <p style={{ fontSize: 12, color: '#888', margin: '0 0 8px' }}>
+                Alternate names that appear in bank descriptions for this tenant (e.g. "J Smith", "Jose Rodriguez"). Used for auto-matching rent deposits.
+              </p>
+              {aliases.map(a => (
+                <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                  <span className="mono" style={{ flex: 1, fontSize: 13, background: '#F5F5F5', padding: '2px 6px', borderRadius: 2 }}>{a.alias}</span>
+                  <button className="btn-edit" style={{ fontSize: 11 }} onClick={() => handleDeleteAlias(a.id)}>Remove</button>
+                </div>
+              ))}
+              {aliasError && <div style={{ color: '#E30613', fontSize: 12, marginBottom: 6 }}>{aliasError}</div>}
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <input
+                  className="form-input"
+                  value={newAlias}
+                  onChange={e => setNewAlias(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddAlias()}
+                  placeholder="e.g. Carlos Carrillo"
+                  style={{ flex: 1 }}
+                />
+                <button className="btn-secondary" onClick={handleAddAlias}>Add Alias</button>
+              </div>
+            </div>
+          )}
         </Modal>
       )}
 
