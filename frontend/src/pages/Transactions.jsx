@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize } from '../api';
+import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -117,6 +117,18 @@ export default function Transactions() {
     }
   };
 
+  const handleBackfill = async () => {
+    try {
+      const r = await backfillPropertyTenant();
+      await reload();
+      showToast(
+        `Auto-fill: ${r.fromTenant} property from tenant, ${r.fromPropertyAmt} tenant from property+amount, ${r.fromUniqueAmt} from unique rent amount`
+      );
+    } catch {
+      showToast('Auto-fill failed');
+    }
+  };
+
   const handleBulkCategorize = async (reapplyAll = false) => {
     try {
       const result = await bulkCategorize({ reapply_all: reapplyAll });
@@ -159,6 +171,7 @@ export default function Transactions() {
         <h1 className="page-title">Transactions</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={handleAutoMatch}>Auto-Match Rent</button>
+          <button className="btn-secondary" onClick={handleBackfill}>Auto-Fill Property &amp; Tenant</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(false)}>Apply Rules</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All</button>
         </div>

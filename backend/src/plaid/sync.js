@@ -2,6 +2,7 @@ const plaidClient = require('./client');
 const db = require('../db/db');
 const { applyRulesToTransactions } = require('../categorization/ruleEngine');
 const { autoMatchAll } = require('../matching/rentMatcher');
+const { backfillPropertyTenant } = require('../matching/backfill');
 
 const RENT_TOLERANCE = 10;
 const START_DATE = '2010-01-01';
@@ -135,6 +136,7 @@ async function syncAll() {
 
   if (totalSynced > 0) {
     await autoMatchAll();
+    await backfillPropertyTenant();
   }
 
   return { synced: totalSynced, skipped: totalSkipped, errors };

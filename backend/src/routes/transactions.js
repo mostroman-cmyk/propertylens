@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db/db');
 const { autoMatchAll } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
+const { backfillPropertyTenant } = require('../matching/backfill');
 
 const SELECT_TX = `
   SELECT tx.*, p.name AS property_name, t.name AS tenant_name
@@ -49,15 +50,25 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// Manually assign a tenant to a transaction
+// Manually assign a tenant to a transaction; auto-fills property_id from tenant if not set
 router.put('/:id/assign-tenant', async (req, res) => {
   const { tenant_id } = req.body;
   try {
     const confidence = tenant_id ? 'exact' : null;
-    await db.query(
-      'UPDATE transactions SET tenant_id=$1, match_confidence=$2, needs_review=false WHERE id=$3',
-      [tenant_id || null, confidence, req.params.id]
-    );
+    if (tenant_id) {
+      await db.query(
+        `UPDATE transactions
+         SET tenant_id=$1, match_confidence=$2, needs_review=false,
+             property_id = COALESCE(property_id, (SELECT property_id FROM tenants WHERE id = $1))
+         WHERE id=$3`,
+        [tenant_id, confidence, req.params.id]
+      );
+    } else {
+      await db.query(
+        'UPDATE transactions SET tenant_id=NULL, match_confidence=NULL, needs_review=false WHERE id=$1',
+        [req.params.id]
+      );
+    }
     const result = await db.query(SELECT_TX + ' WHERE tx.id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
@@ -70,6 +81,16 @@ router.put('/:id/assign-tenant', async (req, res) => {
 router.post('/auto-match', async (req, res) => {
   try {
     const result = await autoMatchAll();
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Backfill property_id and tenant_id via cross-inference
+router.post('/backfill-property-tenant', async (req, res) => {
+  try {
+    const result = await backfillPropertyTenant();
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
