@@ -36,12 +36,14 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const { category, type, property_id } = req.body;
+  const { category, type, property_id, property_scope } = req.body;
   if (!category || !type) return res.status(400).json({ error: 'category and type are required' });
+  const scope = property_scope || 'single';
+  const effectivePropertyId = scope === 'portfolio' ? null : (property_id || null);
   try {
     await db.query(
-      'UPDATE transactions SET category=$1, type=$2, property_id=$3 WHERE id=$4',
-      [category, type, property_id || null, req.params.id]
+      'UPDATE transactions SET category=$1, type=$2, property_id=$3, property_scope=$4 WHERE id=$5',
+      [category, type, effectivePropertyId, scope, req.params.id]
     );
     const result = await db.query(SELECT_TX + ' WHERE tx.id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });

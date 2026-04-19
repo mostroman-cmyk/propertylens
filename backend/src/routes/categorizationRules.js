@@ -12,12 +12,12 @@ router.get('/', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { keyword, category, type, priority } = req.body;
+  const { keyword, category, type, priority, property_scope } = req.body;
   if (!keyword || !category || !type) return res.status(400).json({ error: 'keyword, category, and type are required' });
   try {
     const result = await db.query(
-      'INSERT INTO categorization_rules (keyword, category, type, priority) VALUES ($1, $2, $3, $4) RETURNING *',
-      [keyword.toUpperCase(), category, type, priority || 0]
+      'INSERT INTO categorization_rules (keyword, category, type, priority, property_scope) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+      [keyword.toUpperCase(), category, type, priority || 0, property_scope || 'single']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

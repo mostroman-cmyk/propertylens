@@ -182,6 +182,37 @@ async function migrate() {
   const { recalculateRentMonths } = require('../matching/rentMonth');
   await recalculateRentMonths({ onlyNull: true });
 
+  // Portfolio-wide scope support
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS property_scope TEXT DEFAULT 'single'`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS predicted_property_scope TEXT`);
+  await db.query(`ALTER TABLE categorization_rules ADD COLUMN IF NOT EXISTS property_scope TEXT DEFAULT 'single'`);
+
+  // Seed portfolio-wide categorization rules (idempotent by keyword)
+  const portfolioRules = [
+    ['UMBRELLA',          'Insurance',            'expense', 10],
+    ['LLC',               'Legal',                'expense', 10],
+    ['BUSINESS LICENSE',  'Legal',                'expense', 10],
+    ['QUICKBOOKS',        'Software',             'expense', 10],
+    ['TURBOTAX',          'Software',             'expense', 10],
+    ['ACCOUNTANT',        'Professional Services','expense', 10],
+    ['CPA',               'Professional Services','expense', 10],
+    ['BOOKKEEPING',       'Professional Services','expense', 10],
+  ];
+  for (const [keyword, category, type, priority] of portfolioRules) {
+    const { rows } = await db.query('SELECT id FROM categorization_rules WHERE keyword=$1', [keyword]);
+    if (rows.length === 0) {
+      await db.query(
+        `INSERT INTO categorization_rules (keyword, category, type, priority, property_scope) VALUES ($1,$2,$3,$4,'portfolio')`,
+        [keyword, category, type, priority]
+      );
+    }
+  }
+
+  // Portfolio allocation setting
+  await db.query(
+    `INSERT INTO settings (key, value) VALUES ('portfolio_allocation', 'equal') ON CONFLICT (key) DO NOTHING`
+  );
+
   console.log('[migrate] Database ready');
 }
 

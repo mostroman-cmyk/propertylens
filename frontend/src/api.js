@@ -35,3 +35,5 @@ export const acceptAllHighConfidence  = ()         => api.post('/predictions/acc
 export const getCategorizationRules    = ()      => api.get('/categorization-rules').then(r => r.data);
 export const createCategorizationRule  = (data)  => api.post('/categorization-rules', data).then(r => r.data);
 export const deleteCategorizationRule  = (id)    => api.delete(`/categorization-rules/${id}`).then(r => r.data);
+
+export const getPropertyPL = (year) => api.get('/reports/property-pl', { params: { year } }).then(r => r.data);

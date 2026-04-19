@@ -55,14 +55,16 @@ router.post('/:id/accept', async (req, res) => {
     const finalCategory   = category    ?? tx.predicted_category;
     const finalPropertyId = property_id !== undefined ? (property_id || null) : tx.predicted_property_id;
     const finalTenantId   = tenant_id   !== undefined ? (tenant_id   || null) : tx.predicted_tenant_id;
+    const finalScope      = tx.predicted_property_scope || 'single';
+    const effectivePropertyId = finalScope === 'portfolio' ? null : finalPropertyId;
 
     await db.query(`
       UPDATE transactions
-      SET category=$1, property_id=$2, tenant_id=$3,
+      SET category=$1, property_id=$2, tenant_id=$3, property_scope=$4,
           match_confidence = CASE WHEN $3::integer IS NOT NULL THEN 'exact' ELSE match_confidence END,
           needs_review = false, prediction_accepted=true
-      WHERE id=$4
-    `, [finalCategory, finalPropertyId, finalTenantId, req.params.id]);
+      WHERE id=$5
+    `, [finalCategory, effectivePropertyId, finalTenantId, finalScope, req.params.id]);
 
     const result = await db.query(SELECT_PRED + ' WHERE tx.id=$1', [req.params.id]);
     res.json(result.rows[0]);

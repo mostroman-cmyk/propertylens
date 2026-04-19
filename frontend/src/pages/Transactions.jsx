@@ -46,7 +46,7 @@ export default function Transactions() {
   const [error, setError] = useState(null);
 
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ category: '', type: '', property_id: '' });
+  const [form, setForm] = useState({ category: '', type: '', property_id: '', property_scope: 'single' });
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
 
@@ -86,7 +86,7 @@ export default function Transactions() {
   }, []);
 
   const openEdit = (tx) => {
-    setForm({ category: tx.category, type: tx.type, property_id: tx.property_id || '' });
+    setForm({ category: tx.category, type: tx.type, property_id: tx.property_id || '', property_scope: tx.property_scope || 'single' });
     setModal(tx);
     setModalError(null);
   };
@@ -96,7 +96,9 @@ export default function Transactions() {
     setModalError(null);
     try {
       const updated = await updateTransaction(modal.id, {
-        category: form.category, type: form.type, property_id: form.property_id || null,
+        category: form.category, type: form.type,
+        property_id: form.property_scope === 'portfolio' ? null : (form.property_id || null),
+        property_scope: form.property_scope,
       });
       setTransactions(txs => txs.map(t => t.id === modal.id ? updated : t));
       showToast('Transaction updated');
@@ -289,7 +291,12 @@ export default function Transactions() {
               <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
               <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
               <td className="nowrap">{tx.category}</td>
-              <td style={{ color: '#666' }}>{tx.property_name || '—'}</td>
+              <td style={{ color: '#666' }}>
+                {tx.property_scope === 'portfolio'
+                  ? <span style={{ fontStyle: 'italic', fontVariant: 'small-caps', fontWeight: 600, fontSize: 11, color: '#444' }}>🏘 All Properties</span>
+                  : (tx.property_name || '—')
+                }
+              </td>
               <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
               <td className="nowrap" style={{ fontSize: 11 }}>
                 {tx.type === 'income' && tx.tenant_id ? (
@@ -359,7 +366,18 @@ export default function Transactions() {
           </div>
           <div className="form-group">
             <label>Property</label>
-            <select className="form-input" value={form.property_id} onChange={e => setForm(f => ({ ...f, property_id: e.target.value }))}>
+            <select
+              className="form-input"
+              value={form.property_scope === 'portfolio' ? '__portfolio__' : (form.property_id || '')}
+              onChange={e => {
+                if (e.target.value === '__portfolio__') {
+                  setForm(f => ({ ...f, property_scope: 'portfolio', property_id: '' }));
+                } else {
+                  setForm(f => ({ ...f, property_scope: 'single', property_id: e.target.value }));
+                }
+              }}
+            >
+              <option value="__portfolio__">🏘 All Properties (Portfolio)</option>
               <option value="">— None —</option>
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>

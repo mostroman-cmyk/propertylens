@@ -150,7 +150,12 @@ export default function Dashboard() {
                   <td>{tx.description}</td>
                   <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                   <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-                  <td className="nowrap">{tx.category}</td>
+                  <td className="nowrap">
+                    {tx.category}
+                    {tx.property_scope === 'portfolio' && (
+                      <span style={{ marginLeft: 6, fontSize: 10, background: '#F5F5F5', border: '1px solid #E5E5E5', borderRadius: 2, padding: '1px 4px', color: '#666', fontVariant: 'small-caps' }}>🏘 ALL</span>
+                    )}
+                  </td>
                 </tr>
               ))}
               {transactions.length === 0 && (

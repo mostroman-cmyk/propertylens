@@ -2,8 +2,8 @@ import { useEffect, useState } from 'react';
 import { getCategorizationRules, createCategorizationRule, deleteCategorizationRule, bulkCategorize } from '../api';
 import Toast, { useToast } from '../components/Toast';
 
-const CATEGORIES = ['Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
-const EMPTY_FORM = { keyword: '', category: 'Other', type: 'expense', priority: '0' };
+const CATEGORIES = ['Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Legal', 'Software', 'Professional Services', 'Other Income', 'Other'];
+const EMPTY_FORM = { keyword: '', category: 'Other', type: 'expense', priority: '0', property_scope: 'single' };
 
 export default function CategorizationRules() {
   const [rules, setRules] = useState([]);
@@ -28,6 +28,7 @@ export default function CategorizationRules() {
         category: form.category,
         type: form.type,
         priority: parseInt(form.priority) || 0,
+        property_scope: form.property_scope,
       });
       setRules(rs => [created, ...rs]);
       setForm(EMPTY_FORM);
@@ -111,6 +112,13 @@ export default function CategorizationRules() {
             <label>Priority</label>
             <input className="form-input" type="number" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} />
           </div>
+          <div className="form-group">
+            <label>Scope</label>
+            <select className="form-input" value={form.property_scope} onChange={e => setForm(f => ({ ...f, property_scope: e.target.value }))}>
+              <option value="single">Single property</option>
+              <option value="portfolio">🏘 Portfolio-wide</option>
+            </select>
+          </div>
         </div>
         <button className="btn-primary" onClick={handleAdd} disabled={saving || !form.keyword.trim()}>
           {saving ? 'Adding...' : '+ Add Rule'}
@@ -123,6 +131,7 @@ export default function CategorizationRules() {
             <th>Keyword</th>
             <th>Category</th>
             <th>Type</th>
+            <th>Scope</th>
             <th>Priority</th>
             <th></th>
           </tr>
@@ -133,6 +142,9 @@ export default function CategorizationRules() {
               <td><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85rem' }}>{rule.keyword}</code></td>
               <td>{rule.category}</td>
               <td><span className={`badge ${rule.type}`}>{rule.type}</span></td>
+              <td style={{ fontSize: 11, color: rule.property_scope === 'portfolio' ? '#444' : '#aaa' }}>
+                {rule.property_scope === 'portfolio' ? '🏘 Portfolio' : 'Single'}
+              </td>
               <td style={{ color: '#888' }}>{rule.priority}</td>
               <td style={{ width: 70 }}>
                 <button className="btn-danger" onClick={() => handleDelete(rule.id)}>Delete</button>
@@ -140,7 +152,7 @@ export default function CategorizationRules() {
             </tr>
           ))}
           {rules.length === 0 && (
-            <tr><td colSpan={5} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No rules yet. Add one above.</td></tr>
+            <tr><td colSpan={6} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No rules yet. Add one above.</td></tr>
           )}
         </tbody>
       </table>

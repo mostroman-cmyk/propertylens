@@ -19,9 +19,10 @@ async function applyRulesToTransactions(txIds) {
     const desc = tx.description.toLowerCase();
     const matched = rules.find(r => desc.includes(r.keyword.toLowerCase()));
     if (matched) {
+      const scope = matched.property_scope || 'single';
       await db.query(
-        'UPDATE transactions SET category=$1, type=$2 WHERE id=$3',
-        [matched.category, matched.type, tx.id]
+        'UPDATE transactions SET category=$1, type=$2, property_scope=$3, property_id=CASE WHEN $3=\'portfolio\' THEN NULL ELSE property_id END WHERE id=$4',
+        [matched.category, matched.type, scope, tx.id]
       );
       counts[matched.category] = (counts[matched.category] || 0) + 1;
       categorized++;
@@ -52,9 +53,10 @@ async function bulkCategorize(reapplyAll = false) {
     const desc = tx.description.toLowerCase();
     const matched = rules.find(r => desc.includes(r.keyword.toLowerCase()));
     if (matched) {
+      const scope = matched.property_scope || 'single';
       await db.query(
-        'UPDATE transactions SET category=$1, type=$2 WHERE id=$3',
-        [matched.category, matched.type, tx.id]
+        'UPDATE transactions SET category=$1, type=$2, property_scope=$3, property_id=CASE WHEN $3=\'portfolio\' THEN NULL ELSE property_id END WHERE id=$4',
+        [matched.category, matched.type, scope, tx.id]
       );
       counts[matched.category] = (counts[matched.category] || 0) + 1;
       categorized++;

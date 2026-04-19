@@ -57,6 +57,9 @@ export default function Settings() {
   const [ampm, setAmpm] = useState('PM');
   const [savingSchedule, setSavingSchedule] = useState(false);
 
+  const [portfolioAllocation, setPortfolioAllocation] = useState('equal');
+  const [savingAllocation, setSavingAllocation] = useState(false);
+
   // Bank connections state
   const [connections, setConnections] = useState([]);
   const [connectionAccounts, setConnectionAccounts] = useState({});
@@ -100,6 +103,7 @@ export default function Settings() {
         const { hour, ampm: ap } = hour24ToDisplay(s.alert_hour || '18');
         setHour12(hour);
         setAmpm(ap);
+        setPortfolioAllocation(s.portfolio_allocation || 'equal');
       })
       .finally(() => setLoading(false));
   }, [fetchConnections]);
@@ -312,7 +316,39 @@ export default function Settings() {
         </button>
       </div>
 
-      {/* ── SECTION 2: BANK CONNECTIONS ── */}
+      {/* ── SECTION 2: PORTFOLIO ALLOCATION ── */}
+      <div className="settings-section">
+        <div className="settings-section-title">Portfolio Expense Allocation</div>
+        <p className="settings-section-desc">When a transaction is marked "All Properties", how should it be split across properties in per-property P&L reports?</p>
+        <div className="form-group" style={{ maxWidth: 320 }}>
+          <label>Allocation Method</label>
+          <select className="form-input" value={portfolioAllocation} onChange={e => setPortfolioAllocation(e.target.value)}>
+            <option value="equal">Equal split — divide evenly across all properties</option>
+            <option value="revenue_share">By revenue share — proportional to rent income</option>
+            <option value="unit_count">By unit count — proportional to number of tenants</option>
+            <option value="unallocated">Unallocated — show as separate line, don't split</option>
+          </select>
+        </div>
+        <button
+          className="btn-primary"
+          disabled={savingAllocation}
+          onClick={async () => {
+            setSavingAllocation(true);
+            try {
+              await updateSettings({ portfolio_allocation: portfolioAllocation });
+              showToast('Allocation method saved');
+            } catch {
+              showToast('Failed to save');
+            } finally {
+              setSavingAllocation(false);
+            }
+          }}
+        >
+          {savingAllocation ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+
+      {/* ── SECTION 3: BANK CONNECTIONS ── */}
       <div className="settings-section">
         <div className="settings-section-title">Bank Connections</div>
         <p className="settings-section-desc">Connect bank accounts via Plaid to import transactions automatically.</p>

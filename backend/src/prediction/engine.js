@@ -124,7 +124,7 @@ function predictForTransaction(tx, training, rules, tenants) {
 
 async function predictAll() {
   const { rows: training } = await db.query(`
-    SELECT id, description, amount, type, category, property_id, tenant_id
+    SELECT id, description, amount, type, category, property_id, tenant_id, property_scope
     FROM transactions
     WHERE category NOT IN ('Other', 'Other Income')
   `);
@@ -137,7 +137,7 @@ async function predictAll() {
   `);
 
   const { rows: rules } = await db.query(
-    'SELECT keyword, category, type, priority FROM categorization_rules ORDER BY priority DESC'
+    'SELECT keyword, category, type, priority, property_scope FROM categorization_rules ORDER BY priority DESC'
   );
 
   const { rows: tenants } = await db.query(
@@ -148,7 +148,7 @@ async function predictAll() {
   await db.query(`
     UPDATE transactions
     SET predicted_category=NULL, predicted_property_id=NULL, predicted_tenant_id=NULL,
-        prediction_confidence=NULL, prediction_reasoning=NULL
+        prediction_confidence=NULL, prediction_reasoning=NULL, predicted_property_scope=NULL
     WHERE category IN ('Other', 'Other Income')
       AND (prediction_accepted IS NULL OR prediction_accepted = false)
   `);
@@ -158,18 +158,26 @@ async function predictAll() {
   for (const tx of uncategorized) {
     const pred = predictForTransaction(tx, training, rules, tenants);
     if (!pred) { counts.none++; continue; }
+
+    // Check if this merchant is tagged portfolio in 3+ training transactions
+    const merchant = extractMerchant(tx.description);
+    const merchantTraining = training.filter(c => extractMerchant(c.description) === merchant);
+    const portfolioCount = merchantTraining.filter(c => c.property_scope === 'portfolio').length;
+    const predictedScope = portfolioCount >= 3 ? 'portfolio' : null;
+
     counts[pred.prediction_confidence] = (counts[pred.prediction_confidence] || 0) + 1;
     await db.query(`
       UPDATE transactions
       SET predicted_category=$1, predicted_property_id=$2, predicted_tenant_id=$3,
-          prediction_confidence=$4, prediction_reasoning=$5
-      WHERE id=$6
+          prediction_confidence=$4, prediction_reasoning=$5, predicted_property_scope=$6
+      WHERE id=$7
     `, [
       pred.predicted_category,
       pred.predicted_property_id ?? null,
       pred.predicted_tenant_id ?? null,
       pred.prediction_confidence,
       pred.prediction_reasoning,
+      predictedScope,
       tx.id,
     ]);
   }

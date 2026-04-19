@@ -15,6 +15,7 @@ const emailRouter               = require('./routes/email');
 const settingsRouter            = require('./routes/settings');
 const categorizationRulesRouter = require('./routes/categorizationRules');
 const predictionsRouter = require('./routes/predictions');
+const reportsRouter     = require('./routes/reports');
 
 const app  = express();
 const PORT = process.env.PORT && process.env.PORT !== '5432' ? process.env.PORT : 3001;
@@ -37,6 +38,7 @@ app.use('/api/email',        emailRouter);
 app.use('/api/settings',              settingsRouter);
 app.use('/api/categorization-rules',  categorizationRulesRouter);
 app.use('/api/predictions', predictionsRouter);
+app.use('/api/reports',    reportsRouter);
 
 app.use(express.static(FRONTEND_DIST));
 app.get('*', (req, res) => {

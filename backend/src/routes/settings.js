@@ -3,7 +3,7 @@ const router = express.Router();
 const db = require('../db/db');
 const { reschedule, buildExpressions } = require('../cron/rentCheck');
 
-const ALLOWED_KEYS = ['notify_email', 'alert_frequency', 'alert_day', 'alert_day2', 'alert_weekday', 'alert_hour'];
+const ALLOWED_KEYS = ['notify_email', 'alert_frequency', 'alert_day', 'alert_day2', 'alert_weekday', 'alert_hour', 'portfolio_allocation'];
 const SCHEDULE_KEYS = new Set(['alert_frequency', 'alert_day', 'alert_day2', 'alert_weekday', 'alert_hour']);
 
 async function loadSettings() {
