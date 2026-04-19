@@ -2,6 +2,7 @@ import { useEffect, useState, useRef, useCallback } from 'react';
 import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
+import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
@@ -41,6 +42,7 @@ export default function Transactions() {
   const contextMenuRef = useRef(null);
 
   const [filter, setFilter] = useState('all');
+  const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
   const { toast, showToast } = useToast();
 
@@ -200,20 +202,23 @@ export default function Transactions() {
         </div>
       </div>
 
-      <div className="filter-tabs">
-        {[
-          { key: 'all',       label: `All (${transactions.length})` },
-          { key: 'unmatched', label: `Unmatched rent (${unmatched})` },
-          { key: 'ambiguous', label: `Needs review (${ambiguous})` },
-        ].map(({ key, label }) => (
-          <button
-            key={key}
-            className={`filter-tab${filter === key ? ' active' : ''}`}
-            onClick={() => setFilter(key)}
-          >
-            {label}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="filter-tabs">
+          {[
+            { key: 'all',       label: `All (${transactions.length})` },
+            { key: 'unmatched', label: `Unmatched rent (${unmatched})` },
+            { key: 'ambiguous', label: `Needs review (${ambiguous})` },
+          ].map(({ key, label }) => (
+            <button
+              key={key}
+              className={`filter-tab${filter === key ? ' active' : ''}`}
+              onClick={() => setFilter(key)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {sortCol && <button className="btn-edit" onClick={resetSort}>Reset sort</button>}
       </div>
 
       <table className="tx-table">
@@ -229,18 +234,24 @@ export default function Transactions() {
         </colgroup>
         <thead>
           <tr>
-            <th>Date</th>
-            <th>Description</th>
-            <th className="num">Amount</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Property</th>
-            <th>Tenant</th>
+            {[
+              { col: 'date',        label: 'Date' },
+              { col: 'description', label: 'Description' },
+              { col: 'amount',      label: 'Amount',   cls: 'num' },
+              { col: 'type',        label: 'Type' },
+              { col: 'category',    label: 'Category' },
+              { col: 'property',    label: 'Property' },
+              { col: 'tenant',      label: 'Tenant' },
+            ].map(({ col, label, cls }) => (
+              <th key={col} className={[cls, 'sortable', sortCol === col ? 'sort-active' : ''].filter(Boolean).join(' ')} onClick={() => handleSort(col)}>
+                {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+            ))}
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {filtered.map(tx => (
+          {sortRows(filtered, sortCol, sortDir, TX_COL_DEFS).map(tx => (
             <tr key={tx.id} onContextMenu={e => handleContextMenu(e, tx)}>
               <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</td>
               <td className="col-desc" title={tx.description}>{tx.description}</td>

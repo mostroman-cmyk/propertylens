@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
+import { useSortState, sortRows, PRED_COL_DEFS } from '../utils/sort';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
@@ -20,6 +21,7 @@ export default function Predictions() {
   const [accepting, setAccepting]     = useState(false);
   const [editModal, setEditModal]     = useState(null);
   const { toast, showToast } = useToast();
+  const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
   const reload = useCallback(async () => {
     const data = await getPredictions();
@@ -111,7 +113,10 @@ export default function Predictions() {
   return (
     <div>
       <div className="page-header">
-        <h1 className="page-title">Predictions</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <h1 className="page-title">Predictions</h1>
+          {sortCol && <button className="btn-edit" onClick={resetSort}>Reset sort</button>}
+        </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={handleRunPredictions} disabled={running}>
             {running ? 'Running...' : 'Run Predictions'}
@@ -167,18 +172,24 @@ export default function Predictions() {
             </colgroup>
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Description</th>
-                <th className="num">Amount</th>
-                <th>Predicted Category</th>
-                <th>Property</th>
-                <th>Tenant</th>
+                {[
+                  { col: 'date',               label: 'Date' },
+                  { col: 'description',        label: 'Description' },
+                  { col: 'amount',             label: 'Amount',             cls: 'num' },
+                  { col: 'predicted_category', label: 'Predicted Category' },
+                  { col: 'property',           label: 'Property' },
+                  { col: 'tenant',             label: 'Tenant' },
+                ].map(({ col, label, cls }) => (
+                  <th key={col} className={[cls, 'sortable', sortCol === col ? 'sort-active' : ''].filter(Boolean).join(' ')} onClick={() => handleSort(col)}>
+                    {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+                  </th>
+                ))}
                 <th>Reasoning</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
-              {txs.map(tx => (
+              {sortRows(txs, sortCol, sortDir, PRED_COL_DEFS).map(tx => (
                 <tr key={tx.id}>
                   <td className="nowrap mono" style={{ fontSize: 11 }}>
                     {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}

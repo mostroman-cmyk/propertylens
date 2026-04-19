@@ -212,6 +212,16 @@ table {
   text-overflow: ellipsis;
 }
 
+/* Sortable column headers */
+.sortable {
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.sortable:hover { color: #000; }
+.sort-active { color: #000; }
+.sort-caret { margin-left: 4px; font-size: 10px; opacity: 0.7; }
+
 thead {
   position: sticky;
   top: 44px;

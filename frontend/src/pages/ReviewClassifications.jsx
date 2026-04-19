@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, bulkUpdateTransactions } from '../api';
 import Toast, { useToast } from '../components/Toast';
+import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
@@ -36,6 +37,7 @@ export default function ReviewClassifications() {
   const [editingCell,  setEditingCell]  = useState(null); // { txId, field }
   const [selectedIds,  setSelectedIds]  = useState(new Set());
   const [bulkCategory, setBulkCategory] = useState('');
+  const { sortCol, sortDir, handleSort, resetSort } = useSortState();
 
   const { toast, showToast } = useToast();
 
@@ -118,7 +120,7 @@ export default function ReviewClassifications() {
     const s = search.toLowerCase();
     filtered = filtered.filter(tx => tx.description.toLowerCase().includes(s));
   }
-  filtered = [...filtered].sort((a, b) => a.category.localeCompare(b.category) || a.date.localeCompare(b.date));
+  filtered = sortRows(filtered, sortCol, sortDir, TX_COL_DEFS);
 
   const filteredIds = filtered.map(tx => tx.id);
   const allFilteredSelected = filteredIds.length > 0 && filteredIds.every(id => selectedIds.has(id));
@@ -181,6 +183,7 @@ export default function ReviewClassifications() {
           onChange={e => setSearch(e.target.value)}
           style={{ flex: 1, minWidth: 160 }}
         />
+        {sortCol && <button className="btn-edit" onClick={resetSort}>Reset sort</button>}
       </div>
 
       {similarFilter && (
@@ -229,13 +232,19 @@ export default function ReviewClassifications() {
                 style={{ accentColor: '#000' }}
               />
             </th>
-            <th>Date</th>
-            <th>Description</th>
-            <th className="num">Amount</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Property</th>
-            <th>Tenant</th>
+            {[
+              { col: 'date',        label: 'Date' },
+              { col: 'description', label: 'Description' },
+              { col: 'amount',      label: 'Amount',   cls: 'num' },
+              { col: 'type',        label: 'Type' },
+              { col: 'category',    label: 'Category' },
+              { col: 'property',    label: 'Property' },
+              { col: 'tenant',      label: 'Tenant' },
+            ].map(({ col, label, cls }) => (
+              <th key={col} className={[cls, 'sortable', sortCol === col ? 'sort-active' : ''].filter(Boolean).join(' ')} onClick={() => handleSort(col)}>
+                {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+              </th>
+            ))}
             <th></th>
           </tr>
         </thead>
