@@ -13,6 +13,12 @@ const FILTER_OPTIONS = [
   { key: 'custom',     label: 'Custom Range' },
 ];
 
+const PERIOD_LABELS = {
+  '7d': '7 DAYS', 'this_month': 'THIS MONTH', 'last_month': 'LAST MONTH',
+  '3m': '3 MONTHS', '6m': '6 MONTHS', 'ytd': 'YTD', '1y': '1 YEAR',
+  'all': 'ALL TIME', 'custom': 'CUSTOM',
+};
+
 function getMonthOptions() {
   const now = new Date();
   return Array.from({ length: 13 }, (_, i) => {
@@ -42,28 +48,25 @@ function getDateRange(filterKey, customStart, customEnd) {
       const s = new Date(now); s.setDate(s.getDate() - 6);
       return { startDate: toYMD(s), endDate: today };
     }
-    case 'this_month': {
-      const s = new Date(now.getFullYear(), now.getMonth(), 1);
-      return { startDate: toYMD(s), endDate: today };
-    }
+    case 'this_month':
+      return { startDate: toYMD(new Date(now.getFullYear(), now.getMonth(), 1)), endDate: today };
     case 'last_month': {
       const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
       const e = new Date(now.getFullYear(), now.getMonth(), 0);
       return { startDate: toYMD(s), endDate: toYMD(e) };
     }
     case '3m': {
-      const s = new Date(now); s.setMonth(s.getMonth() - 3);
+      const s = new Date(now); s.setDate(s.getDate() - 89);
       return { startDate: toYMD(s), endDate: today };
     }
     case '6m': {
-      const s = new Date(now); s.setMonth(s.getMonth() - 6);
+      const s = new Date(now); s.setDate(s.getDate() - 179);
       return { startDate: toYMD(s), endDate: today };
     }
-    case 'ytd': {
+    case 'ytd':
       return { startDate: `${now.getFullYear()}-01-01`, endDate: today };
-    }
     case '1y': {
-      const s = new Date(now); s.setFullYear(s.getFullYear() - 1);
+      const s = new Date(now); s.setDate(s.getDate() - 364);
       return { startDate: toYMD(s), endDate: today };
     }
     case 'all':
@@ -73,6 +76,36 @@ function getDateRange(filterKey, customStart, customEnd) {
     default:
       return { startDate: null, endDate: null };
   }
+}
+
+// Returns how many months of rent to expect for the given filter (null = indeterminate)
+function getExpectedMonths(filterKey) {
+  const now = new Date();
+  switch (filterKey) {
+    case '7d':        return 1;
+    case 'this_month':return 1;
+    case 'last_month':return 1;
+    case '3m':        return 3;
+    case '6m':        return 6;
+    case 'ytd':       return now.getMonth() + 1; // Jan=1 … Dec=12
+    case '1y':        return 12;
+    default:          return null; // 'all', 'custom' — indeterminate
+  }
+}
+
+// For 'custom', count distinct calendar months in range
+function countMonthsInRange(startDate, endDate) {
+  if (!startDate || !endDate) return null;
+  const s = new Date(startDate + 'T12:00:00');
+  const e = new Date(endDate + 'T12:00:00');
+  let count = 0;
+  let d = new Date(s.getFullYear(), s.getMonth(), 1);
+  const endMonth = new Date(e.getFullYear(), e.getMonth(), 1);
+  while (d <= endMonth) {
+    count++;
+    d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  }
+  return count;
 }
 
 function fmtDate(dateStr) {
@@ -98,7 +131,10 @@ function RangeLabel({ filterKey, startDate, endDate }) {
 
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
+  // date-filtered: drives KPI row + Recent Transactions table
   const [transactions, setTransactions] = useState([]);
+  // unfiltered: drives Rent Status panel + unmatched banner (independent of date filter)
+  const [allTransactions, setAllTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -113,7 +149,7 @@ export default function Dashboard() {
 
   const { startDate, endDate } = getDateRange(dateFilter, customStart, customEnd);
 
-  const fetchTransactions = useCallback(async (params) => {
+  const fetchFiltered = useCallback(async (params) => {
     setTxLoading(true);
     try {
       const data = await getTransactions(params);
@@ -123,16 +159,21 @@ export default function Dashboard() {
     }
   }, []);
 
+  const fetchAll = useCallback(() =>
+    getTransactions().then(setAllTransactions), []);
+
+  // Re-fetch filtered when date range changes
   useEffect(() => {
     const params = {};
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
-    fetchTransactions(params);
-  }, [startDate, endDate, fetchTransactions]);
+    fetchFiltered(params);
+  }, [startDate, endDate, fetchFiltered]);
 
+  // Fetch tenants + full transaction set once on mount
   useEffect(() => {
-    getTenants()
-      .then(setTenants)
+    Promise.all([getTenants(), getTransactions()])
+      .then(([t, tx]) => { setTenants(t); setAllTransactions(tx); })
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
@@ -142,15 +183,19 @@ export default function Dashboard() {
     if (key !== 'custom') { setCustomStart(''); setCustomEnd(''); }
   };
 
+  const refreshAfterSync = async () => {
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    await Promise.all([fetchFiltered(params), fetchAll()]);
+  };
+
   const handleFullResync = async () => {
     setFullResyncing(true);
     setSyncResult(null);
     try {
       const { data } = await api.post('/plaid/full-resync-all');
-      const params = {};
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      await fetchTransactions(params);
+      await refreshAfterSync();
       let msg, type;
       if (data.errors?.length) {
         const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
@@ -173,10 +218,7 @@ export default function Dashboard() {
     setSyncResult(null);
     try {
       const { data } = await api.post('/plaid/sync');
-      const params = {};
-      if (startDate) params.startDate = startDate;
-      if (endDate) params.endDate = endDate;
-      await fetchTransactions(params);
+      await refreshAfterSync();
       let msg, type;
       if (data.errors?.length) {
         const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
@@ -200,28 +242,40 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  const income   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-  const expenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
-  const netIncome = income - expenses;
+  // ── KPI calculations (date-filtered transactions) ──
+  const rentDeposits = transactions.filter(tx => tx.type === 'income' && tx.category === 'rent');
+  const collected    = rentDeposits.reduce((s, tx) => s + parseFloat(tx.amount), 0);
+  const income       = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+  const expenses     = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
+  const netIncome    = income - expenses;
 
   const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
-  const unmatchedIncome  = transactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
+  const expectedMonths   = dateFilter === 'custom'
+    ? countMonthsInRange(startDate, endDate)
+    : getExpectedMonths(dateFilter);
+  const expectedRent  = expectedMonths !== null ? expectedMonths * totalMonthlyRent : null;
+  const outstanding   = expectedRent !== null ? Math.max(0, expectedRent - collected) : null;
 
-  const collectedThisMonth = transactions
+  const periodLabel = PERIOD_LABELS[dateFilter] || '';
+
+  // ── Rent Status panel (all transactions, selectedMonth) ──
+  const unmatchedIncome = allTransactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
+
+  const collectedForMonth = allTransactions
     .filter(tx => tx.type === 'income' && tx.tenant_id && tx.rent_month === selectedMonth)
     .reduce((s, tx) => s + parseFloat(tx.amount), 0);
 
   const rentStatus = tenants.map(tenant => {
-    const paidTx = transactions.find(tx =>
+    const paidTx = allTransactions.find(tx =>
       tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === selectedMonth
     );
     return { tenant, paid: !!paidTx, paidDate: paidTx?.date || null };
   });
 
-  const paidCount     = rentStatus.filter(r => r.paid).length;
-  const unpaidTenants = rentStatus.filter(r => !r.paid);
-  const outstanding   = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
-  const paidPct       = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
+  const paidCount      = rentStatus.filter(r => r.paid).length;
+  const unpaidTenants  = rentStatus.filter(r => !r.paid);
+  const rentOutstanding = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
+  const paidPct        = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
 
   const selectedMonthLabel = MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth;
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
@@ -259,7 +313,7 @@ export default function Dashboard() {
         <div className="alert alert-warn" style={{ marginBottom: 8 }}>
           {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {selectedMonthLabel}:{' '}
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
-          <span className="mono">${outstanding.toLocaleString()}</span> outstanding.
+          <span className="mono">${rentOutstanding.toLocaleString()}</span> outstanding.
         </div>
       ) : tenants.length > 0 ? (
         <div className="alert alert-success" style={{ marginBottom: 8 }}>
@@ -303,31 +357,31 @@ export default function Dashboard() {
 
       <RangeLabel filterKey={dateFilter} startDate={startDate} endDate={endDate} />
 
-      {/* ── KPIs ── */}
+      {/* ── KPI Row ── */}
       <div className="kpi-row">
         <div className="kpi-item">
           <div className="kpi-label">Rent Roll / Mo</div>
           <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Income</div>
-          <div className="kpi-value">{txLoading ? '…' : `$${income.toLocaleString()}`}</div>
+          <div className="kpi-label">Collected ({periodLabel})</div>
+          <div className="kpi-value">{txLoading ? '…' : `$${collected.toLocaleString()}`}</div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Expenses</div>
-          <div className={`kpi-value${expenses > 0 ? ' negative' : ''}`}>{txLoading ? '…' : `$${expenses.toLocaleString()}`}</div>
+          <div className="kpi-label">Outstanding ({periodLabel})</div>
+          <div className={`kpi-value${outstanding > 0 ? ' negative' : ' muted'}`}>
+            {txLoading ? '…' : outstanding !== null ? `$${outstanding.toLocaleString()}` : '—'}
+          </div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Net Income</div>
-          <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>{txLoading ? '…' : `$${netIncome.toLocaleString()}`}</div>
+          <div className="kpi-label">Net Income ({periodLabel})</div>
+          <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>
+            {txLoading ? '…' : `$${netIncome.toLocaleString()}`}
+          </div>
         </div>
         <div className="kpi-item">
-          <div className="kpi-label">Collected ({selectedMonthLabel.split(' ')[0]})</div>
-          <div className="kpi-value">${collectedThisMonth.toLocaleString()}</div>
-        </div>
-        <div className="kpi-item">
-          <div className="kpi-label">Outstanding</div>
-          <div className={`kpi-value${outstanding > 0 ? ' negative' : ' muted'}`}>${outstanding.toLocaleString()}</div>
+          <div className="kpi-label">Tenants</div>
+          <div className="kpi-value muted">{tenants.length}</div>
         </div>
       </div>
 
@@ -341,7 +395,7 @@ export default function Dashboard() {
             </h2>
             {transactions.length > 50 && (
               <a href="/transactions" style={{ fontSize: 12, color: '#666', textDecoration: 'underline' }}>
-                View all {transactions.length}
+                View all transactions →
               </a>
             )}
           </div>
@@ -386,7 +440,19 @@ export default function Dashboard() {
                   </tr>
                 ))}
                 {transactions.length === 0 && !txLoading && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions in this range. Go to Settings → Bank Connections to sync.</td></tr>
+                  <tr>
+                    <td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>
+                      No transactions in this range.{' '}
+                      {dateFilter !== 'all' && (
+                        <button
+                          style={{ background: 'none', border: 'none', color: '#666', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 13 }}
+                          onClick={() => handleFilterClick('all')}
+                        >
+                          Show all time
+                        </button>
+                      )}
+                    </td>
+                  </tr>
                 )}
               </tbody>
             </table>
@@ -429,7 +495,7 @@ export default function Dashboard() {
                     {paidCount} / {tenants.length} PAID
                   </td>
                   <td colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
-                    ${collectedThisMonth.toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
+                    ${collectedForMonth.toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
                   </td>
                 </tr>
               )}
