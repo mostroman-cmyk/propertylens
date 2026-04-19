@@ -167,6 +167,25 @@ router.put('/:id/rent-month', async (req, res) => {
   }
 });
 
+// Reset all income transactions auto-assigned with low/medium confidence (amount_only or partial)
+// so the user can manually review and confirm them
+router.post('/reset-ambiguous-rent-matches', async (req, res) => {
+  try {
+    const result = await db.query(`
+      UPDATE transactions
+      SET tenant_id = NULL, property_id = NULL, needs_review = true,
+          match_confidence = 'ambiguous', rent_month = NULL, needs_month_review = false
+      WHERE type = 'income'
+        AND tenant_id IS NOT NULL
+        AND match_confidence IN ('amount_only', 'partial')
+      RETURNING id
+    `);
+    res.json({ reset: result.rowCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Recalculate rent_month for all matched income transactions
 router.post('/recalculate-rent-months', async (req, res) => {
   try {

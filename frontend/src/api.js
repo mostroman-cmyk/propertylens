@@ -24,7 +24,8 @@ export const bulkCategorize           = (data)     => api.post('/transactions/bu
 export const backfillPropertyTenant   = ()         => api.post('/transactions/backfill-property-tenant').then(r => r.data);
 export const bulkUpdateTransactions   = (data)     => api.post('/transactions/bulk-update', data).then(r => r.data);
 export const setRentMonth             = (id, rent_month) => api.put(`/transactions/${id}/rent-month`, { rent_month }).then(r => r.data);
-export const recalculateRentMonths    = ()         => api.post('/transactions/recalculate-rent-months').then(r => r.data);
+export const recalculateRentMonths         = ()         => api.post('/transactions/recalculate-rent-months').then(r => r.data);
+export const resetAmbiguousRentMatches     = ()         => api.post('/transactions/reset-ambiguous-rent-matches').then(r => r.data);
 
 export const getPredictions           = ()         => api.get('/predictions').then(r => r.data);
 export const runPredictions           = ()         => api.post('/predictions/predict-all').then(r => r.data);

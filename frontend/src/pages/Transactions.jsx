@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
-import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant, setRentMonth } from '../api';
+import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, autoMatchRent, bulkCategorize, backfillPropertyTenant, setRentMonth, resetAmbiguousRentMatches } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
@@ -32,11 +32,17 @@ function MatchStatus({ tx, onAssign }) {
   if (tx.match_confidence === 'amount_only') {
     return <span className="status-amount" onClick={() => onAssign(tx)} title="Matched by amount only — click to reassign">● {tx.tenant_name}</span>;
   }
-  if (tx.match_confidence === 'partial') {
-    return <span className="status-amount" onClick={() => onAssign(tx)} title="Partial amount match — click to confirm">~ {tx.tenant_name}</span>;
-  }
   if (tx.match_confidence === 'ambiguous' || tx.needs_review) {
-    return <span className="status-review" onClick={() => onAssign(tx)} title="Multiple tenants match — click to assign">● REVIEW</span>;
+    return (
+      <span
+        className="status-review"
+        onClick={() => onAssign(tx)}
+        title={tx.prediction_reasoning || 'Multiple tenants match — click to assign'}
+        style={{ fontWeight: 700, letterSpacing: '0.02em' }}
+      >
+        ⚠ Needs Review
+      </span>
+    );
   }
   return <span className="status-none" onClick={() => onAssign(tx)} title="Click to assign">—</span>;
 }
@@ -70,6 +76,10 @@ export default function Transactions() {
     return tid ? parseInt(tid) : null;
   });
   const { sortCol, sortDir, handleSort, resetSort } = useSortState();
+
+  // Inline assignment state for "Needs Rent Review" tab
+  const [reviewSelections, setReviewSelections] = useState({}); // txId → tenantId string
+  const [reviewSaving, setReviewSaving] = useState({}); // txId → bool
 
   const { toast, showToast } = useToast();
 
@@ -119,18 +129,8 @@ export default function Transactions() {
   };
 
   const openAssign = (tx) => {
-    // Pre-select: existing tenant if set, otherwise closest by rent amount
-    if (tx.tenant_id) {
-      setAssignTenantId(String(tx.tenant_id));
-    } else if (tenants.length > 0) {
-      const txAmt = parseFloat(tx.amount);
-      const closest = [...tenants].sort((a, b) =>
-        Math.abs(parseFloat(a.monthly_rent) - txAmt) - Math.abs(parseFloat(b.monthly_rent) - txAmt)
-      )[0];
-      setAssignTenantId(String(closest.id));
-    } else {
-      setAssignTenantId('');
-    }
+    // Only pre-select if a tenant is already assigned — never default to a guess
+    setAssignTenantId(tx.tenant_id ? String(tx.tenant_id) : '');
     setLearnPattern(false);
     setAssignModal(tx);
     setContextMenu(null);
@@ -161,7 +161,6 @@ export default function Transactions() {
       if (result.pattern)     parts.push(`${result.pattern} via pattern`);
       if (result.exact)       parts.push(`${result.exact} exact`);
       if (result.amount_only) parts.push(`${result.amount_only} amount-only`);
-      if (result.partial)     parts.push(`${result.partial} partial`);
       if (result.ambiguous)   parts.push(`${result.ambiguous} ambiguous`);
       showToast(`Matched ${result.matched} of ${result.total}: ${parts.join(', ')}`);
     } catch {
@@ -193,6 +192,38 @@ export default function Transactions() {
     setContextMenu(null);
   };
 
+  const handleResetAmbiguous = async () => {
+    const count = transactions.filter(t =>
+      t.type === 'income' && t.tenant_id && ['amount_only', 'partial'].includes(t.match_confidence)
+    ).length;
+    if (!window.confirm(
+      `This will un-assign tenant from ${count} rent transaction${count === 1 ? '' : 's'} that were matched with low confidence. You'll then manually review them. Continue?`
+    )) return;
+    try {
+      const r = await resetAmbiguousRentMatches();
+      await reload();
+      showToast(`Reset ${r.reset} ambiguous auto-matches — review them in the Needs Rent Review tab`);
+      if (r.reset > 0) setFilter('rent_review');
+    } catch {
+      showToast('Reset failed');
+    }
+  };
+
+  const handleQuickAssign = async (tx) => {
+    const tenantId = reviewSelections[tx.id];
+    if (!tenantId) { showToast('Select a tenant first'); return; }
+    setReviewSaving(s => ({ ...s, [tx.id]: true }));
+    try {
+      const updated = await assignTenant(tx.id, { tenant_id: parseInt(tenantId), learn_pattern: true });
+      setTransactions(txs => txs.map(t => t.id === tx.id ? updated : t));
+      showToast('Tenant assigned — payer pattern saved');
+    } catch {
+      showToast('Failed to assign tenant');
+    } finally {
+      setReviewSaving(s => ({ ...s, [tx.id]: false }));
+    }
+  };
+
   const handleContextMenu = (e, tx) => {
     e.preventDefault();
     setContextMenu({ x: e.clientX, y: e.clientY, tx });
@@ -217,11 +248,17 @@ export default function Transactions() {
     ? (tenants.find(t => t.id === tenantIdFilter)?.name || `Tenant #${tenantIdFilter}`)
     : null;
 
+  const needsRentReview = transactions.filter(t => t.type === 'income' && t.needs_review).length;
+  const ambiguousAssignedCount = transactions.filter(t =>
+    t.type === 'income' && t.tenant_id && ['amount_only', 'partial'].includes(t.match_confidence)
+  ).length;
+
   const filtered = transactions.filter(tx => {
     if (tenantIdFilter && tx.tenant_id !== tenantIdFilter) return false;
-    if (filter === 'unmatched')  return tx.type === 'income' && !tx.tenant_id;
-    if (filter === 'ambiguous')  return tx.needs_review;
-    if (filter === 'portfolio')  return tx.property_scope === 'portfolio';
+    if (filter === 'unmatched')    return tx.type === 'income' && !tx.tenant_id;
+    if (filter === 'ambiguous')    return tx.needs_review;
+    if (filter === 'rent_review')  return tx.type === 'income' && tx.needs_review;
+    if (filter === 'portfolio')    return tx.property_scope === 'portfolio';
     return true;
   });
 
@@ -234,15 +271,22 @@ export default function Transactions() {
   const ambiguous = transactions.filter(t => t.needs_review).length;
   const portfolio = transactions.filter(t => t.property_scope === 'portfolio').length;
 
+  const isReviewTab = filter === 'rent_review';
+
   return (
     <div>
       <div className="page-header">
         <h1 className="page-title">Transactions</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn-secondary" onClick={handleAutoMatch}>Auto-Match Rent</button>
           <button className="btn-secondary" onClick={handleBackfill}>Auto-Fill Property &amp; Tenant</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(false)}>Apply Rules</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All</button>
+          {ambiguousAssignedCount > 0 && (
+            <button className="btn-secondary" onClick={handleResetAmbiguous} style={{ borderColor: '#F59E0B', color: '#B45309' }}>
+              Reset Ambiguous Tenant Assignments
+            </button>
+          )}
         </div>
       </div>
 
@@ -263,24 +307,26 @@ export default function Transactions() {
           <div className="kpi-label">Unmatched Rent</div>
           <div className={`kpi-value${unmatched > 0 ? ' negative' : ' muted'}`}>{unmatched}</div>
         </div>
-        <div className="kpi-item" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'ambiguous' ? 'all' : 'ambiguous')}>
+        <div className="kpi-item" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'rent_review' ? 'all' : 'rent_review')}>
           <div className="kpi-label">Needs Review</div>
-          <div className={`kpi-value${ambiguous > 0 ? ' negative' : ' muted'}`}>{ambiguous}</div>
+          <div className={`kpi-value${needsRentReview > 0 ? ' negative' : ' muted'}`}>{needsRentReview}</div>
         </div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <div className="filter-tabs">
           {[
-            { key: 'all',       label: `All (${transactions.length})` },
-            { key: 'portfolio', label: `All Properties (${portfolio})` },
-            { key: 'unmatched', label: `Unmatched rent (${unmatched})` },
-            { key: 'ambiguous', label: `Needs review (${ambiguous})` },
-          ].map(({ key, label }) => (
+            { key: 'all',         label: `All (${transactions.length})` },
+            { key: 'portfolio',   label: `All Properties (${portfolio})` },
+            { key: 'unmatched',   label: `Unmatched rent (${unmatched})` },
+            { key: 'ambiguous',   label: `Needs review (${ambiguous})` },
+            { key: 'rent_review', label: `Needs Rent Review (${needsRentReview})`, urgent: needsRentReview > 0 },
+          ].map(({ key, label, urgent }) => (
             <button
               key={key}
               className={`filter-tab${filter === key ? ' active' : ''}`}
               onClick={() => setFilter(key)}
+              style={urgent && filter !== key ? { color: '#DC2626', fontWeight: 600 } : undefined}
             >
               {label}
             </button>
@@ -295,6 +341,18 @@ export default function Transactions() {
         </div>
       )}
 
+      {isReviewTab && needsRentReview === 0 && (
+        <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: 14, border: '1px solid #E5E5E5', borderRadius: 4, margin: '8px 0' }}>
+          No rent deposits need review — all income has been matched or is unambiguous.
+        </div>
+      )}
+
+      {isReviewTab && needsRentReview > 0 && (
+        <div style={{ marginBottom: 8, padding: '8px 12px', background: '#FEF3C7', border: '1px solid #F59E0B', borderRadius: 4, fontSize: 13, color: '#92400E' }}>
+          <strong>⚠ {needsRentReview} rent deposit{needsRentReview === 1 ? '' : 's'} need review</strong> — select the correct tenant and click ✓ Assign &amp; Learn to confirm.
+        </div>
+      )}
+
       <table className="tx-table">
         <colgroup>
           <col style={{ width: 90 }} />
@@ -304,6 +362,7 @@ export default function Transactions() {
           <col style={{ width: 110 }} />
           <col style={{ width: 140 }} />
           <col style={{ width: 140 }} />
+          {isReviewTab && <col style={{ width: 260 }} />}
           <col style={{ width: 90 }} />
           <col style={{ width: 60 }} />
         </colgroup>
@@ -322,57 +381,111 @@ export default function Transactions() {
                 {label}{sortCol === col && <span className="sort-caret">{sortDir === 'asc' ? '▲' : '▼'}</span>}
               </th>
             ))}
+            {isReviewTab && <th>Assign Tenant</th>}
             <th>Rent Month</th>
             <th></th>
           </tr>
         </thead>
         <tbody>
-          {sortRows(filtered, sortCol, sortDir, TX_COL_DEFS).map(tx => (
-            <tr key={tx.id} onContextMenu={e => handleContextMenu(e, tx)}>
-              <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</td>
-              <td className="col-desc" title={tx.description}>{tx.description}</td>
-              <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-              <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-              <td className="nowrap">{tx.category}</td>
-              <td style={{ color: '#666' }}>
-                {tx.property_scope === 'portfolio'
-                  ? <span style={{ fontStyle: 'italic', fontVariant: 'small-caps', fontWeight: 600, fontSize: 11, color: '#444' }}>🏘 All Properties</span>
-                  : (tx.property_name || '—')
-                }
-              </td>
-              <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
-              <td className="nowrap" style={{ fontSize: 11 }}>
-                {tx.type === 'income' && tx.tenant_id ? (
-                  editingCell?.txId === tx.id && editingCell?.field === 'rent_month' ? (
-                    <select
-                      autoFocus
-                      className="form-input"
-                      style={{ height: 24, padding: '0 4px', fontSize: 11 }}
-                      value={tx.rent_month || ''}
-                      onChange={e => { handleRentMonthEdit(tx, e.target.value); setEditingCell(null); }}
-                      onBlur={() => setEditingCell(null)}
-                    >
-                      {RENT_MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
-                    </select>
-                  ) : (
-                    <span
-                      onClick={() => setEditingCell({ txId: tx.id, field: 'rent_month' })}
-                      style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}
-                      title="Click to change rent month"
-                    >
-                      {tx.needs_month_review && <span style={{ color: '#F59E0B', marginRight: 3 }}>●</span>}
-                      {formatRentMonth(tx.rent_month)}
-                    </span>
-                  )
-                ) : <span style={{ color: '#ccc' }}>—</span>}
-              </td>
-              <td className="nowrap">
-                <button className="btn-edit" onClick={() => openEdit(tx)}>Edit</button>
-              </td>
-            </tr>
-          ))}
-          {filtered.length === 0 && (
-            <tr><td colSpan={9} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
+          {sortRows(filtered, sortCol, sortDir, TX_COL_DEFS).map(tx => {
+            const txAmt = parseFloat(tx.amount);
+            // Candidate tenants: exact amount match first, fall back to within 10%
+            const exactCandidates = tenants.filter(t => Math.abs(parseFloat(t.monthly_rent) - txAmt) <= 1);
+            const reviewCandidates = exactCandidates.length > 0
+              ? exactCandidates
+              : tenants.filter(t => Math.abs(parseFloat(t.monthly_rent) - txAmt) / Math.max(txAmt, 1) <= 0.10);
+
+            return (
+              <tr
+                key={tx.id}
+                onContextMenu={e => handleContextMenu(e, tx)}
+                style={isReviewTab ? { background: '#FFFBEB' } : undefined}
+              >
+                <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</td>
+                <td className="col-desc" title={tx.description}>{tx.description}</td>
+                <td className="num mono">${Math.abs(txAmt).toLocaleString()}</td>
+                <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                <td className="nowrap">{tx.category}</td>
+                <td style={{ color: '#666' }}>
+                  {tx.property_scope === 'portfolio'
+                    ? <span style={{ fontStyle: 'italic', fontVariant: 'small-caps', fontWeight: 600, fontSize: 11, color: '#444' }}>🏘 All Properties</span>
+                    : (tx.property_name || '—')
+                  }
+                </td>
+                <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
+                {isReviewTab && (
+                  <td style={{ padding: '4px 8px' }}>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <select
+                        className="form-input"
+                        style={{ height: 26, padding: '0 4px', fontSize: 12, flex: 1 }}
+                        value={reviewSelections[tx.id] || ''}
+                        onChange={e => setReviewSelections(s => ({ ...s, [tx.id]: e.target.value }))}
+                      >
+                        <option value="">— Select tenant —</option>
+                        {reviewCandidates.map(t => {
+                          const delta = parseFloat(t.monthly_rent) - txAmt;
+                          const tag = Math.abs(delta) <= 1 ? 'exact' : `${delta > 0 ? '+' : ''}$${Math.abs(delta).toFixed(0)}`;
+                          const prop = properties.find(p => p.id === t.property_id);
+                          return (
+                            <option key={t.id} value={t.id}>
+                              {t.name}{prop ? ` — ${prop.name}` : ''} ({tag})
+                            </option>
+                          );
+                        })}
+                        {reviewCandidates.length === 0 && tenants.map(t => {
+                          const prop = properties.find(p => p.id === t.property_id);
+                          return (
+                            <option key={t.id} value={t.id}>
+                              {t.name}{prop ? ` — ${prop.name}` : ''} (${parseFloat(t.monthly_rent).toLocaleString()}/mo)
+                            </option>
+                          );
+                        })}
+                      </select>
+                      <button
+                        className="btn-secondary"
+                        style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', height: 26 }}
+                        disabled={!reviewSelections[tx.id] || reviewSaving[tx.id]}
+                        onClick={() => handleQuickAssign(tx)}
+                      >
+                        {reviewSaving[tx.id] ? '…' : '✓ Assign & Learn'}
+                      </button>
+                    </div>
+                  </td>
+                )}
+                <td className="nowrap" style={{ fontSize: 11 }}>
+                  {tx.type === 'income' && tx.tenant_id ? (
+                    editingCell?.txId === tx.id && editingCell?.field === 'rent_month' ? (
+                      <select
+                        autoFocus
+                        className="form-input"
+                        style={{ height: 24, padding: '0 4px', fontSize: 11 }}
+                        value={tx.rent_month || ''}
+                        onChange={e => { handleRentMonthEdit(tx, e.target.value); setEditingCell(null); }}
+                        onBlur={() => setEditingCell(null)}
+                      >
+                        {RENT_MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+                      </select>
+                    ) : (
+                      <span
+                        onClick={() => setEditingCell({ txId: tx.id, field: 'rent_month' })}
+                        style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}
+                        title="Click to change rent month"
+                      >
+                        {tx.needs_month_review && <span style={{ color: '#F59E0B', marginRight: 3 }}>●</span>}
+                        {formatRentMonth(tx.rent_month)}
+                      </span>
+                    )
+                  ) : <span style={{ color: '#ccc' }}>—</span>}
+                </td>
+                <td className="nowrap">
+                  <button className="btn-edit" onClick={() => openEdit(tx)}>Edit</button>
+                </td>
+              </tr>
+            );
+          })}
+          {filtered.length === 0 && !isReviewTab && (
+            <tr><td colSpan={isReviewTab ? 10 : 9} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
           )}
         </tbody>
       </table>
