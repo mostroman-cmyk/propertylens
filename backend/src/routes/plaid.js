@@ -231,6 +231,19 @@ router.post('/sync', async (req, res) => {
   }
 });
 
+// Clear all cursors and re-import full history from Plaid for every connection
+router.post('/full-resync-all', async (req, res) => {
+  try {
+    await db.query('UPDATE bank_connections SET cursor=NULL');
+    console.log('[full-resync-all] Cleared all cursors, starting historical sync...');
+    const result = await syncAll({ forceFullSync: true });
+    res.json(result);
+  } catch (err) {
+    console.error('[full-resync-all] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/connections', async (req, res) => {
   try {
     const result = await db.query(

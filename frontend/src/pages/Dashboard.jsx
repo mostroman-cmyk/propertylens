@@ -22,6 +22,7 @@ export default function Dashboard() {
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
+  const [fullResyncing, setFullResyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
@@ -35,6 +36,29 @@ export default function Dashboard() {
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleFullResync = async () => {
+    setFullResyncing(true);
+    setSyncResult(null);
+    try {
+      const { data } = await api.post('/plaid/full-resync-all');
+      await fetchTransactions();
+      let msg, type;
+      if (data.errors?.length) {
+        const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
+        msg = `Full re-sync: imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''}. Error — ${detail}`;
+        type = 'warn';
+      } else {
+        msg = `Full re-sync complete — imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''} from full history.`;
+        type = 'success';
+      }
+      setSyncResult({ message: msg, type });
+    } catch (err) {
+      setSyncResult({ message: err.response?.data?.error || 'Full re-sync failed.', type: 'error' });
+    } finally {
+      setFullResyncing(false);
+    }
+  };
 
   const handleSync = async () => {
     setSyncing(true);
@@ -90,20 +114,35 @@ export default function Dashboard() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
-        <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
-          {syncing ? 'Syncing...' : 'Sync Transactions'}
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={handleSync} disabled={syncing || fullResyncing}>
+            {syncing ? 'Syncing...' : 'Sync Transactions'}
+          </button>
+          <button className="btn-primary" onClick={handleFullResync} disabled={syncing || fullResyncing} title="Clear saved sync position and re-import all available history from Plaid (up to 24 months)">
+            {fullResyncing ? 'Importing history...' : 'Full Re-Sync (Pull Complete History)'}
+          </button>
+        </div>
       </div>
 
       {syncResult && (
         <div className={`alert ${alertClass[syncResult.type]}`}>{syncResult.message}</div>
       )}
 
-      {unpaidTenants.length > 0 && (
-        <div className="alert alert-warn" style={{ marginBottom: 20 }}>
+      {unpaidTenants.length > 0 ? (
+        <div className="alert alert-warn" style={{ marginBottom: 8 }}>
           {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}:{' '}
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
           <span className="mono">${outstanding.toLocaleString()}</span> outstanding.
+        </div>
+      ) : tenants.length > 0 ? (
+        <div className="alert alert-success" style={{ marginBottom: 8 }}>
+          All {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} paid for {MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}.
+        </div>
+      ) : null}
+      {tenants.length > 0 && (
+        <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
+          Showing rent status for <strong>{MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
+          Payments deposited on the 25th–31st are counted toward the following month.
         </div>
       )}
 

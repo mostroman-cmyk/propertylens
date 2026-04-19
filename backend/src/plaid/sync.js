@@ -86,10 +86,11 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
     batchNum++;
     const { added, modified, removed, has_more, next_cursor } = await callTransactionsSync(conn.access_token, cursor);
 
-    // Filter all arrays to selected accounts only
+    // Filter added/modified to selected accounts only.
+    // Removed items only contain transaction_id (no account_id), so delete them unconditionally —
+    // the WHERE plaid_transaction_id clause ensures we only touch Plaid-imported rows.
     const filteredAdded    = added.filter(tx => enabledIds.includes(tx.account_id));
     const filteredModified = modified.filter(tx => enabledIds.includes(tx.account_id));
-    const filteredRemoved  = removed.filter(tx => enabledIds.includes(tx.account_id));
 
     console.log(`[sync] ${conn.institution_name} — Batch ${batchNum}: ${added.length} returned from Plaid, ${filteredAdded.length} match selected accounts, inserting... has_more=${has_more}`);
 
@@ -122,7 +123,7 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
         if (result.rowCount > 0) totalModified++;
       }
 
-      for (const tx of filteredRemoved) {
+      for (const tx of removed) {
         await client.query('DELETE FROM transactions WHERE plaid_transaction_id=$1', [tx.transaction_id]);
         totalRemoved++;
       }

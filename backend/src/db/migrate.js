@@ -178,9 +178,10 @@ async function migrate() {
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS rent_month VARCHAR(7)`);
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS needs_month_review BOOLEAN DEFAULT false`);
 
-  // Backfill rent_month for existing matched income transactions (one-time, skips rows already set)
+  // Recalculate rent_month for all matched income transactions using day-based logic
+  // (runs every deploy so late-month deposits like Mar 28 are correctly assigned to April)
   const { recalculateRentMonths } = require('../matching/rentMonth');
-  await recalculateRentMonths({ onlyNull: true });
+  await recalculateRentMonths({ onlyNull: false });
 
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS plaid_account_id TEXT`);
 
