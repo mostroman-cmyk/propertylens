@@ -296,10 +296,137 @@ router.post('/full-resync-all', async (req, res) => {
 
 router.get('/connections', async (req, res) => {
   try {
-    const result = await db.query(
-      'SELECT id, institution_name, item_id, enabled_account_ids, created_at FROM bank_connections ORDER BY created_at DESC'
-    );
+    const result = await db.query(`
+      SELECT bc.id, bc.institution_name, bc.item_id, bc.enabled_account_ids, bc.created_at, bc.last_synced_at,
+        (SELECT COUNT(*)::int FROM transactions t
+         WHERE bc.enabled_account_ids IS NOT NULL
+         AND array_length(ARRAY(SELECT jsonb_array_elements_text(bc.enabled_account_ids)), 1) > 0
+         AND t.plaid_account_id = ANY(ARRAY(SELECT jsonb_array_elements_text(bc.enabled_account_ids)))
+        ) as tx_count
+      FROM bank_connections bc
+      ORDER BY bc.created_at DESC
+    `);
     res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Merge duplicate connections (same institution) — keeps most recent, removes older ones
+router.post('/connections/merge-duplicates', async (req, res) => {
+  try {
+    const { rows: connections } = await db.query('SELECT * FROM bank_connections ORDER BY created_at DESC');
+
+    const groups = {};
+    for (const conn of connections) {
+      const key = conn.institution_name.toLowerCase();
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(conn);
+    }
+
+    const results = [];
+    let totalDeletedTx = 0;
+
+    for (const conns of Object.values(groups)) {
+      if (conns.length < 2) continue;
+      const keeper = conns[0]; // most recent (sorted DESC)
+      const keeperIds = keeper.enabled_account_ids || [];
+
+      for (const dup of conns.slice(1)) {
+        const dupIds = dup.enabled_account_ids || [];
+        const onlyInDup = dupIds.filter(id => !keeperIds.includes(id));
+
+        let deletedTxCount = 0;
+        if (onlyInDup.length > 0) {
+          const r = await db.query(
+            'DELETE FROM transactions WHERE plaid_account_id = ANY($1::text[]) RETURNING id',
+            [onlyInDup]
+          );
+          deletedTxCount = r.rowCount;
+          totalDeletedTx += deletedTxCount;
+        }
+
+        try { await plaidClient.itemRemove({ access_token: dup.access_token }); }
+        catch (e) { console.warn(`[merge] itemRemove failed for ${dup.institution_name}:`, e.message); }
+
+        await db.query('DELETE FROM bank_connections WHERE id=$1', [dup.id]);
+        console.log(`[merge] Removed duplicate connection ${dup.id} (${dup.institution_name}), deleted ${deletedTxCount} exclusive transactions`);
+
+        results.push({
+          institution: dup.institution_name,
+          removed_connection_id: dup.id,
+          kept_connection_id: keeper.id,
+          deleted_transactions: deletedTxCount,
+        });
+      }
+    }
+
+    res.json({ merged: results.length, deleted_transactions: totalDeletedTx, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Sync a single connection (no cursor reset)
+router.post('/connections/:connectionId/sync', async (req, res) => {
+  try {
+    const result = await syncOne(req.params.connectionId, { forceFullSync: false });
+    res.json(result);
+  } catch (err) {
+    console.error('[sync-one] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full disconnect: remove Plaid item, delete connection row + all its transactions
+router.delete('/connections/:connectionId/full', async (req, res) => {
+  try {
+    const { rows: [conn] } = await db.query('SELECT * FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+    const accountIds = conn.enabled_account_ids || [];
+    let deletedTxCount = 0;
+    if (accountIds.length > 0) {
+      const r = await db.query(
+        'DELETE FROM transactions WHERE plaid_account_id = ANY($1::text[]) RETURNING id',
+        [accountIds]
+      );
+      deletedTxCount = r.rowCount;
+    }
+
+    try { await plaidClient.itemRemove({ access_token: conn.access_token }); }
+    catch (e) { console.warn(`[disconnect-full] itemRemove failed:`, e.message); }
+
+    await db.query('DELETE FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    console.log(`[disconnect-full] Removed connection ${req.params.connectionId} (${conn.institution_name}) + ${deletedTxCount} transactions`);
+
+    res.json({ success: true, institution_name: conn.institution_name, deleted_transactions: deletedTxCount });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Remove only this connection's transactions, keep the connection itself
+router.delete('/connections/:connectionId/transactions-only', async (req, res) => {
+  try {
+    const { rows: [conn] } = await db.query('SELECT * FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+    const accountIds = conn.enabled_account_ids || [];
+    let deletedTxCount = 0;
+    if (accountIds.length > 0) {
+      const r = await db.query(
+        'DELETE FROM transactions WHERE plaid_account_id = ANY($1::text[]) RETURNING id',
+        [accountIds]
+      );
+      deletedTxCount = r.rowCount;
+    }
+
+    // Clear cursor so next sync fetches fresh history
+    await db.query('UPDATE bank_connections SET cursor=NULL WHERE id=$1', [req.params.connectionId]);
+    console.log(`[tx-only-delete] Removed ${deletedTxCount} transactions for ${conn.institution_name}, kept connection`);
+
+    res.json({ success: true, deleted_transactions: deletedTxCount });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -41,3 +41,8 @@ export const getPropertyPL = (year) => api.get('/reports/property-pl', { params:
 export const getTenantAliases  = (id)            => api.get(`/tenants/${id}/aliases`).then(r => r.data);
 export const addTenantAlias    = (id, alias)      => api.post(`/tenants/${id}/aliases`, { alias }).then(r => r.data);
 export const deleteTenantAlias = (id, aliasId)    => api.delete(`/tenants/${id}/aliases/${aliasId}`).then(r => r.data);
+
+export const syncOneConnection            = (id) => api.post(`/plaid/connections/${id}/sync`).then(r => r.data);
+export const disconnectBank               = (id) => api.delete(`/plaid/connections/${id}/full`).then(r => r.data);
+export const removeConnectionTransactions = (id) => api.delete(`/plaid/connections/${id}/transactions-only`).then(r => r.data);
+export const mergeDuplicateConnections    = ()   => api.post('/plaid/connections/merge-duplicates').then(r => r.data);

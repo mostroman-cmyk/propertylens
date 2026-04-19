@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getSettings, updateSettings, api } from '../api';
+import { getSettings, updateSettings, api, syncOneConnection, disconnectBank, removeConnectionTransactions, mergeDuplicateConnections } from '../api';
 import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
 import LegacyCleanup from '../components/LegacyCleanup';
@@ -41,6 +41,20 @@ function buildSummary(s) {
   return `Sending on the ${ordinal(parseInt(s.alert_day || '5'))} of each month at ${timeStr} to ${email}`;
 }
 
+function fmtRelative(dateStr) {
+  if (!dateStr) return null;
+  const d = new Date(dateStr);
+  const diff = Date.now() - d.getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 2) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days}d ago`;
+  return d.toLocaleDateString();
+}
+
 export default function Settings() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -62,15 +76,14 @@ export default function Settings() {
   const [savingAllocation, setSavingAllocation] = useState(false);
 
   const [accountConfirm, setAccountConfirm] = useState(null);
-  // { connId, deselected: [{account_id, count}], total_count, newAccountIds, addedCount, accountNames }
   const [cleaningUp, setCleaningUp] = useState(false);
 
-  // Full re-sync state: { connId, step: 'confirm'|'working', deleteExisting: bool }
+  // Full re-sync state
   const [fullResync, setFullResync] = useState(null);
 
-  // Reconnect state: connId being reconnected, or null
+  // Reconnect state
   const [reconnectConnId, setReconnectConnId] = useState(null);
-  const [reconnectStatus, setReconnectStatus] = useState(null); // success message after reconnect
+  const [reconnectStatus, setReconnectStatus] = useState(null);
 
   // Bank connections state
   const [connections, setConnections] = useState([]);
@@ -79,6 +92,22 @@ export default function Settings() {
   const [savingAccounts, setSavingAccounts] = useState({});
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
+
+  // Per-connection actions
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [perConnSyncing, setPerConnSyncing] = useState({});
+  const [removeTransactionsConfirm, setRemoveTransactionsConfirm] = useState(null);
+  const [disconnectConfirm, setDisconnectConfirm] = useState(null);
+  const [disconnectText, setDisconnectText] = useState('');
+  const [merging, setMerging] = useState(false);
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(null);
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [menuOpen]);
 
   const fetchAccountsForConnections = useCallback(async (conns) => {
     const accountResults = {};
@@ -193,7 +222,6 @@ export default function Settings() {
     const addedIds = newIds.filter(id => !savedIds.includes(id));
 
     if (deselectedIds.length > 0) {
-      // Count transactions that would be removed, then show confirm dialog
       setSavingAccounts(prev => ({ ...prev, [connId]: true }));
       try {
         const { data } = await api.post(`/plaid/connections/${connId}/count-deselected`, { new_account_ids: newIds });
@@ -211,7 +239,6 @@ export default function Settings() {
       return;
     }
 
-    // No deselection — save directly
     await doSaveAccounts(connId, newIds, false, addedIds.length);
   };
 
@@ -237,7 +264,6 @@ export default function Settings() {
 
   const cancelAccountConfirm = () => {
     if (!accountConfirm) return;
-    // Revert pending selection back to what was saved
     const conn = connections.find(c => c.id === accountConfirm.connId);
     setPendingSelections(prev => ({ ...prev, [accountConfirm.connId]: conn?.enabled_account_ids || [] }));
     setAccountConfirm(null);
@@ -256,6 +282,7 @@ export default function Settings() {
       if (data.errors?.length) parts.push(`${data.errors.length} error(s)`);
       showToast(`${conn?.institution_name}: ${parts.join(', ')}`);
       setFullResync(null);
+      await fetchConnections();
       if (data.errors?.length) {
         setSyncResult({ message: data.errors.map(e => `${e.institution}: ${e.error}`).join(' | '), type: 'warn' });
       }
@@ -304,6 +331,7 @@ export default function Settings() {
         type = 'success';
       }
       setSyncResult({ message: msg, type });
+      await fetchConnections();
     } catch (err) {
       setSyncResult({ message: err.response?.data?.error || 'Sync failed.', type: 'error' });
     } finally {
@@ -311,10 +339,81 @@ export default function Settings() {
     }
   };
 
+  const handlePerConnSync = async (connId) => {
+    setPerConnSyncing(prev => ({ ...prev, [connId]: true }));
+    try {
+      const data = await syncOneConnection(connId);
+      const msg = data.errors?.length
+        ? `Sync error: ${data.errors.map(e => e.error).join(', ')}`
+        : data.synced > 0
+          ? `${connections.find(c => c.id === connId)?.institution_name}: added ${data.synced} new transaction${data.synced !== 1 ? 's' : ''}`
+          : `${connections.find(c => c.id === connId)?.institution_name}: already up to date`;
+      showToast(msg);
+      await fetchConnections();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Sync failed');
+    } finally {
+      setPerConnSyncing(prev => ({ ...prev, [connId]: false }));
+    }
+  };
+
+  const handleRemoveTransactions = async () => {
+    if (!removeTransactionsConfirm) return;
+    const { conn } = removeTransactionsConfirm;
+    try {
+      const data = await removeConnectionTransactions(conn.id);
+      showToast(`Removed ${data.deleted_transactions} transaction${data.deleted_transactions !== 1 ? 's' : ''} from ${conn.institution_name}. Connection kept.`);
+      setRemoveTransactionsConfirm(null);
+      await fetchConnections();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to remove transactions');
+    }
+  };
+
+  const handleDisconnect = async () => {
+    if (!disconnectConfirm) return;
+    const { conn } = disconnectConfirm;
+    try {
+      const data = await disconnectBank(conn.id);
+      showToast(`${conn.institution_name} disconnected. ${data.deleted_transactions} transaction${data.deleted_transactions !== 1 ? 's' : ''} removed.`);
+      setDisconnectConfirm(null);
+      setDisconnectText('');
+      await fetchConnections();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to disconnect bank');
+    }
+  };
+
+  const handleMergeDuplicates = async () => {
+    setMerging(true);
+    try {
+      const data = await mergeDuplicateConnections();
+      if (data.merged > 0) {
+        showToast(`Merged ${data.merged} duplicate connection${data.merged !== 1 ? 's' : ''}, removed ${data.deleted_transactions} transaction${data.deleted_transactions !== 1 ? 's' : ''}`);
+      } else {
+        showToast('No duplicates found to merge');
+      }
+      await fetchConnections();
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Merge failed');
+    } finally {
+      setMerging(false);
+    }
+  };
+
   if (loading) return <div className="loading">Loading...</div>;
 
   const days = Array.from({ length: 28 }, (_, i) => i + 1);
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
+
+  // Detect duplicate connections (same institution name)
+  const byInstitution = {};
+  for (const conn of connections) {
+    const key = conn.institution_name.toLowerCase();
+    if (!byInstitution[key]) byInstitution[key] = [];
+    byInstitution[key].push(conn);
+  }
+  const duplicateGroups = Object.values(byInstitution).filter(g => g.length > 1);
 
   return (
     <div>
@@ -448,6 +547,18 @@ export default function Settings() {
         <div className="settings-section-title">Bank Connections</div>
         <p className="settings-section-desc">Connect bank accounts via Plaid to import transactions automatically.</p>
 
+        {/* Duplicate detection banner */}
+        {duplicateGroups.map(group => (
+          <div key={group[0].institution_name} style={{ border: '1px solid #E5A800', borderRadius: 2, padding: '12px 16px', marginBottom: 16, background: '#FFFBEA', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, color: '#7A5700', fontWeight: 500 }}>
+              ⚠ Duplicate connection detected — <strong>{group[0].institution_name}</strong> appears connected {group.length} times with overlapping accounts.
+            </span>
+            <button className="btn-secondary" style={{ borderColor: '#E5A800', color: '#7A5700', whiteSpace: 'nowrap' }} onClick={handleMergeDuplicates} disabled={merging}>
+              {merging ? 'Merging...' : 'Merge Duplicates'}
+            </button>
+          </div>
+        ))}
+
         {syncResult && (
           <div className={`alert ${alertClass[syncResult.type]}`} style={{ marginBottom: 16 }}>{syncResult.message}</div>
         )}
@@ -455,79 +566,193 @@ export default function Settings() {
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           <ConnectBank onSuccess={handleBankConnected} />
           <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
-            {syncing ? 'Syncing...' : 'Sync Transactions'}
+            {syncing ? 'Syncing...' : 'Sync All'}
           </button>
         </div>
 
-        {/* Post-reconnect status message */}
         {reconnectStatus && (
           <div className="alert alert-success" style={{ marginBottom: 16 }}>
             <strong>{reconnectStatus} reconnected.</strong> Plaid is fetching up to 2 years of transaction history — this may take 2–5 minutes.
-            Once ready, click <strong>Full Re-Sync (Pull Complete History)</strong> on the Dashboard or use the Full Re-Sync button in Account Selection below.
+            Once ready, use <strong>Re-sync from scratch</strong> in the ⋮ menu on the connection below.
           </div>
         )}
 
         {connections.length === 0 ? (
           <p style={{ color: '#888', fontSize: 13 }}>No banks connected yet.</p>
         ) : (
-          <>
-            <table>
-              <thead>
-                <tr><th>Institution</th><th>Connected</th><th>Accounts Selected</th><th></th></tr>
-              </thead>
-              <tbody>
-                {connections.map(conn => (
-                  <tr key={conn.id}>
-                    <td>{conn.institution_name}</td>
-                    <td className="nowrap" style={{ color: '#666' }}>{new Date(conn.created_at).toLocaleDateString()}</td>
-                    <td style={{ color: '#666' }}>
-                      {conn.enabled_account_ids?.length
-                        ? `${conn.enabled_account_ids.length} account${conn.enabled_account_ids.length !== 1 ? 's' : ''}`
-                        : <span style={{ color: '#E30613' }}>None selected</span>
-                      }
-                    </td>
-                    <td className="nowrap">
-                      <button className="btn-edit" style={{ fontSize: 11 }} onClick={() => setReconnectConnId(conn.id === reconnectConnId ? null : conn.id)}>
-                        {reconnectConnId === conn.id ? 'Cancel' : 'Reconnect Bank'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          connections.map(conn => {
+            const accounts = connectionAccounts[conn.id] || [];
+            const enabledAccounts = accounts.filter(a => (conn.enabled_account_ids || []).includes(a.account_id));
+            const isMenuOpen = menuOpen === conn.id;
+            const isSyncingThis = perConnSyncing[conn.id];
+            const synced = fmtRelative(conn.last_synced_at);
 
-            {/* Reconnect warning panel */}
-            {reconnectConnId && (() => {
-              const conn = connections.find(c => c.id === reconnectConnId);
-              return (
-                <div style={{ border: '1px solid #E5A800', borderRadius: 2, padding: '16px 20px', marginTop: 16, background: '#FFFBEA' }}>
-                  <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Reconnect {conn?.institution_name} for full history</div>
-                  <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
-                    To get up to 2 years of transaction history, you need to reconnect this bank. Your previously synced
-                    transactions will remain, and we'll merge in any additional history found.
-                  </p>
-                  <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
-                    After reconnecting: go to Account Selection below to re-enable your accounts, then click <strong>Full Re-Sync</strong>.
-                  </p>
-                  <ConnectBank
-                    replaceConnectionId={reconnectConnId}
-                    buttonLabel={`Reconnect ${conn?.institution_name}`}
-                    onSuccess={handleBankConnected}
-                  />
+            return (
+              <div
+                key={conn.id}
+                style={{ border: '1px solid #E5E5E5', borderRadius: 2, padding: '14px 16px', marginBottom: 10, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}
+              >
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{conn.institution_name}</div>
+                  {enabledAccounts.length > 0 ? (
+                    <div style={{ fontSize: 12, color: '#444', marginBottom: 3 }}>
+                      {enabledAccounts.map(a => `${a.name} ····${a.mask}`).join(' · ')}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: '#E30613', marginBottom: 3 }}>No accounts selected</div>
+                  )}
+                  <div style={{ fontSize: 11, color: '#999', fontFamily: 'IBM Plex Mono, monospace' }}>
+                    Connected {new Date(conn.created_at).toLocaleDateString()}
+                    {synced && ` · Synced ${synced}`}
+                    {conn.tx_count > 0 && ` · ${conn.tx_count} transactions`}
+                  </div>
                 </div>
-              );
-            })()}
-          </>
+
+                <div style={{ position: 'relative', flexShrink: 0 }}>
+                  <button
+                    className="btn-edit"
+                    style={{ fontSize: 16, padding: '1px 10px', fontWeight: 700, letterSpacing: 1 }}
+                    onClick={e => { e.stopPropagation(); setMenuOpen(isMenuOpen ? null : conn.id); }}
+                    title="Actions"
+                    disabled={isSyncingThis}
+                  >
+                    {isSyncingThis ? '…' : '⋮'}
+                  </button>
+
+                  {isMenuOpen && (
+                    <div
+                      className="context-menu"
+                      style={{ position: 'absolute', right: 0, left: 'auto', top: 'calc(100% + 2px)', minWidth: 220 }}
+                      onClick={e => e.stopPropagation()}
+                    >
+                      <div
+                        className="context-menu-item"
+                        onClick={() => { setMenuOpen(null); handlePerConnSync(conn.id); }}
+                      >
+                        Sync transactions
+                      </div>
+                      <div
+                        className="context-menu-item"
+                        onClick={() => { setMenuOpen(null); setFullResync({ connId: conn.id, step: 'confirm' }); }}
+                      >
+                        Re-sync from scratch
+                      </div>
+                      <div
+                        className="context-menu-item"
+                        onClick={() => { setMenuOpen(null); setReconnectConnId(conn.id === reconnectConnId ? null : conn.id); }}
+                      >
+                        Reconnect bank
+                      </div>
+                      <div style={{ borderTop: '1px solid #E5E5E5', margin: '4px 0' }} />
+                      <div
+                        className="context-menu-item"
+                        style={{ color: '#E30613' }}
+                        onClick={() => { setMenuOpen(null); setRemoveTransactionsConfirm({ conn, txCount: conn.tx_count || 0 }); }}
+                      >
+                        Remove transactions only
+                      </div>
+                      <div
+                        className="context-menu-item"
+                        style={{ color: '#E30613', fontWeight: 600 }}
+                        onClick={() => { setMenuOpen(null); setDisconnectConfirm({ conn, txCount: conn.tx_count || 0 }); setDisconnectText(''); }}
+                      >
+                        Disconnect bank
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* Reconnect panel */}
+        {reconnectConnId && (() => {
+          const conn = connections.find(c => c.id === reconnectConnId);
+          return (
+            <div style={{ border: '1px solid #E5A800', borderRadius: 2, padding: '16px 20px', marginTop: 12, background: '#FFFBEA' }}>
+              <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Reconnect {conn?.institution_name} for full history</div>
+              <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
+                To get up to 2 years of transaction history, you need to reconnect this bank. Your previously synced
+                transactions will remain, and we'll merge in any additional history found.
+              </p>
+              <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
+                After reconnecting: re-enable your accounts in Account Selection below, then use <strong>Re-sync from scratch</strong> in the ⋮ menu.
+              </p>
+              <ConnectBank
+                replaceConnectionId={reconnectConnId}
+                buttonLabel={`Reconnect ${conn?.institution_name}`}
+                onSuccess={handleBankConnected}
+              />
+            </div>
+          );
+        })()}
+
+        {/* Remove transactions only — confirmation */}
+        {removeTransactionsConfirm && (
+          <div style={{ border: '1px solid #E5A800', borderRadius: 2, padding: '16px 20px', marginTop: 12, background: '#FFFBEA' }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              Remove transactions for {removeTransactionsConfirm.conn.institution_name}?
+            </div>
+            <p style={{ fontSize: 13, color: '#555', margin: '0 0 12px' }}>
+              This will delete <strong>{removeTransactionsConfirm.txCount} transaction{removeTransactionsConfirm.txCount !== 1 ? 's' : ''}</strong> but keep the bank connection.
+              You can re-sync anytime. Continue?
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn-primary"
+                style={{ background: '#E30613', borderColor: '#E30613' }}
+                onClick={handleRemoveTransactions}
+              >
+                Delete {removeTransactionsConfirm.txCount} transaction{removeTransactionsConfirm.txCount !== 1 ? 's' : ''}
+              </button>
+              <button className="btn-edit" onClick={() => setRemoveTransactionsConfirm(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Disconnect bank — confirmation with DISCONNECT typed */}
+        {disconnectConfirm && (
+          <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginTop: 12, background: '#FFF5F5' }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>
+              Disconnect {disconnectConfirm.conn.institution_name}?
+            </div>
+            <p style={{ fontSize: 13, color: '#555', margin: '0 0 8px' }}>
+              This permanently disconnects <strong>{disconnectConfirm.conn.institution_name}</strong> and removes{' '}
+              <strong>{disconnectConfirm.txCount} transaction{disconnectConfirm.txCount !== 1 ? 's' : ''}</strong>. This cannot be undone.
+            </p>
+            <p style={{ fontSize: 13, color: '#555', margin: '0 0 10px' }}>
+              Type <strong>DISCONNECT</strong> to confirm:
+            </p>
+            <input
+              className="form-input"
+              style={{ maxWidth: 260, marginBottom: 12 }}
+              value={disconnectText}
+              onChange={e => setDisconnectText(e.target.value)}
+              placeholder="DISCONNECT"
+              autoFocus
+            />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn-primary"
+                style={{ background: '#E30613', borderColor: '#E30613' }}
+                disabled={disconnectText !== 'DISCONNECT'}
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </button>
+              <button className="btn-edit" onClick={() => { setDisconnectConfirm(null); setDisconnectText(''); }}>Cancel</button>
+            </div>
+          </div>
         )}
       </div>
 
-      {/* ── SECTION 3: ACCOUNT SELECTION ── */}
+      {/* ── SECTION 4: ACCOUNT SELECTION ── */}
       {connections.length > 0 && (
         <div className="settings-section">
           <div className="settings-section-title">Account Selection</div>
           <p className="settings-section-desc">Choose which accounts to include when syncing transactions.</p>
 
-          {/* Confirmation dialog for deselecting accounts */}
           {accountConfirm && (
             <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
               <div style={{ fontWeight: 600, marginBottom: 8 }}>
@@ -537,7 +762,7 @@ export default function Settings() {
                 {accountConfirm.accountNames.join(', ')} will be deselected.
                 {accountConfirm.total_count > 0
                   ? ` This will permanently remove ${accountConfirm.total_count} transaction${accountConfirm.total_count !== 1 ? 's' : ''} linked to ${accountConfirm.accountNames.length === 1 ? 'that account' : 'those accounts'} from your database.`
-                  : ' No transactions are linked to those accounts (they may have been added before account tracking was enabled).'}
+                  : ' No transactions are linked to those accounts.'}
               </p>
               <div style={{ display: 'flex', gap: 8 }}>
                 <button
@@ -553,10 +778,8 @@ export default function Settings() {
             </div>
           )}
 
-          {/* Full re-sync confirmation dialog */}
           {fullResync && fullResync.step === 'confirm' && (() => {
             const conn = connections.find(c => c.id === fullResync.connId);
-            const txCount = (conn?.enabled_account_ids || []).length;
             return (
               <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
                 <div style={{ fontWeight: 600, marginBottom: 8 }}>Full Re-Sync: {conn?.institution_name}</div>
@@ -656,7 +879,7 @@ export default function Settings() {
         </div>
       )}
 
-      {/* ── SECTION 4: LEGACY CLEANUP ── */}
+      {/* ── SECTION 5: LEGACY CLEANUP ── */}
       {connections.length > 0 && (
         <div className="settings-section">
           <div className="settings-section-title">Legacy Transaction Cleanup</div>

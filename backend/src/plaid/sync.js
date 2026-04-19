@@ -140,7 +140,7 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
     if (!has_more) break;
   }
 
-  await db.query('UPDATE bank_connections SET cursor=$1 WHERE id=$2', [cursor, conn.id]);
+  await db.query('UPDATE bank_connections SET cursor=$1, last_synced_at=NOW() WHERE id=$2', [cursor, conn.id]);
   console.log(`[sync] ${conn.institution_name} — Complete: ${totalSynced} new, ${totalModified} modified, ${totalRemoved} removed`);
 
   return { synced: totalSynced, skipped: totalSkipped, modified: totalModified, removed: totalRemoved, newTxIds };

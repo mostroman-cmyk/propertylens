@@ -245,6 +245,8 @@ async function migrate() {
     )
   `);
 
+  await db.query(`ALTER TABLE bank_connections ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMPTZ`);
+
   console.log('[migrate] Database ready');
 }
 
