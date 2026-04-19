@@ -145,33 +145,40 @@ async function sendRentReport({ month, year } = {}) {
     ORDER BY p.id, t.unit
   `);
 
-  // Deposits this month that match a rent amount (within tolerance)
-  const { rows: deposits } = await db.query(`
-    SELECT amount, date
-    FROM transactions
-    WHERE type = 'income'
-      AND date LIKE $1
+  // Primary: tenant_id-matched deposits this month
+  const { rows: matchedDeposits } = await db.query(`
+    SELECT DISTINCT ON (tx.tenant_id) tx.tenant_id, tx.date AS paid_date
+    FROM transactions tx
+    WHERE tx.type = 'income' AND tx.date LIKE $1 AND tx.tenant_id IS NOT NULL
+    ORDER BY tx.tenant_id, tx.date ASC
+  `, [monthPrefix]);
+
+  const matchedByTenantId = new Map(matchedDeposits.map(d => [d.tenant_id, d.paid_date]));
+
+  // Fallback: greedy amount-match for tenants not yet matched via tenant_id
+  const unmatchedTenants = tenants.filter(t => !matchedByTenantId.has(t.id));
+  const { rows: unassignedDeposits } = await db.query(`
+    SELECT amount, date FROM transactions
+    WHERE type = 'income' AND date LIKE $1 AND tenant_id IS NULL
     ORDER BY date ASC
   `, [monthPrefix]);
 
-  const paid = [];
-  const unpaid = [];
-
-  // Greedy match: for each tenant find the earliest unmatched deposit
-  const availableDeposits = [...deposits];
-
-  for (const tenant of tenants) {
+  const availableDeposits = [...unassignedDeposits];
+  for (const tenant of unmatchedTenants) {
     const rent = parseFloat(tenant.monthly_rent);
     const matchIdx = availableDeposits.findIndex(
       d => Math.abs(parseFloat(d.amount) - rent) <= RENT_TOLERANCE
     );
     if (matchIdx !== -1) {
-      paid.push({ ...tenant, paid_date: availableDeposits[matchIdx].date });
+      matchedByTenantId.set(tenant.id, availableDeposits[matchIdx].date);
       availableDeposits.splice(matchIdx, 1);
-    } else {
-      unpaid.push(tenant);
     }
   }
+
+  const paid = tenants
+    .filter(t => matchedByTenantId.has(t.id))
+    .map(t => ({ ...t, paid_date: matchedByTenantId.get(t.id) }));
+  const unpaid = tenants.filter(t => !matchedByTenantId.has(t.id));
 
   const totalExpected  = tenants.reduce((s, t) => s + parseFloat(t.monthly_rent), 0);
   const totalCollected = paid.reduce((s, t) => s + parseFloat(t.monthly_rent), 0);

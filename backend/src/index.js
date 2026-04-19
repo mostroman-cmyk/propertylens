@@ -7,12 +7,13 @@ const migrate = require('./db/migrate');
 const seed    = require('./db/seed');
 const db      = require('./db/db');
 
-const propertiesRouter   = require('./routes/properties');
-const tenantsRouter      = require('./routes/tenants');
-const transactionsRouter = require('./routes/transactions');
-const plaidRouter        = require('./routes/plaid');
-const emailRouter        = require('./routes/email');
-const settingsRouter     = require('./routes/settings');
+const propertiesRouter          = require('./routes/properties');
+const tenantsRouter             = require('./routes/tenants');
+const transactionsRouter        = require('./routes/transactions');
+const plaidRouter               = require('./routes/plaid');
+const emailRouter               = require('./routes/email');
+const settingsRouter            = require('./routes/settings');
+const categorizationRulesRouter = require('./routes/categorizationRules');
 
 const app  = express();
 const PORT = process.env.PORT && process.env.PORT !== '5432' ? process.env.PORT : 3001;
@@ -32,7 +33,8 @@ app.use('/api/tenants',      tenantsRouter);
 app.use('/api/transactions', transactionsRouter);
 app.use('/api/plaid',        plaidRouter);
 app.use('/api/email',        emailRouter);
-app.use('/api/settings',     settingsRouter);
+app.use('/api/settings',              settingsRouter);
+app.use('/api/categorization-rules',  categorizationRulesRouter);
 
 app.use(express.static(FRONTEND_DIST));
 app.get('*', (req, res) => {

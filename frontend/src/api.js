@@ -17,3 +17,11 @@ export const updateTransaction  = (id, data) => api.put(`/transactions/${id}`, d
 
 export const getSettings    = ()     => api.get('/settings').then(r => r.data);
 export const updateSettings = (data) => api.post('/settings', data).then(r => r.data);
+
+export const autoMatchRent     = ()          => api.post('/transactions/auto-match').then(r => r.data);
+export const assignTenant      = (id, data)  => api.put(`/transactions/${id}/assign-tenant`, data).then(r => r.data);
+export const bulkCategorize    = (data)      => api.post('/transactions/bulk-categorize', data).then(r => r.data);
+
+export const getCategorizationRules    = ()      => api.get('/categorization-rules').then(r => r.data);
+export const createCategorizationRule  = (data)  => api.post('/categorization-rules', data).then(r => r.data);
+export const deleteCategorizationRule  = (id)    => api.delete(`/categorization-rules/${id}`).then(r => r.data);

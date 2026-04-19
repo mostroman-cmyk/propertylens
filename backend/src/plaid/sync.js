@@ -1,5 +1,7 @@
 const plaidClient = require('./client');
 const db = require('../db/db');
+const { applyRulesToTransactions } = require('../categorization/ruleEngine');
+const { autoMatchAll } = require('../matching/rentMatcher');
 
 const RENT_TOLERANCE = 10;
 const START_DATE = '2010-01-01';
@@ -81,21 +83,28 @@ async function syncAll() {
       try {
         await client.query('BEGIN');
         let synced = 0, skipped = 0;
+        const newTxIds = [];
         for (const tx of allTransactions) {
           if (tx.pending) { skipped++; continue; }
           const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
           const result = await client.query(
             `INSERT INTO transactions (date, description, amount, type, category, plaid_transaction_id)
              VALUES ($1, $2, $3, $4, $5, $6)
-             ON CONFLICT (plaid_transaction_id) DO NOTHING`,
+             ON CONFLICT (plaid_transaction_id) DO NOTHING
+             RETURNING id`,
             [tx.date, tx.name, storedAmount, type, category, tx.transaction_id]
           );
-          result.rowCount > 0 ? synced++ : skipped++;
+          if (result.rowCount > 0) { synced++; newTxIds.push(result.rows[0].id); }
+          else skipped++;
         }
         await client.query('COMMIT');
         totalSynced += synced;
         totalSkipped += skipped;
         console.log(`[${conn.institution_name}] +${synced} new, ${skipped} already existed`);
+
+        if (newTxIds.length > 0) {
+          await applyRulesToTransactions(newTxIds);
+        }
       } catch (err) {
         await client.query('ROLLBACK');
         throw err;
@@ -122,6 +131,10 @@ async function syncAll() {
         error: userMessage,
       });
     }
+  }
+
+  if (totalSynced > 0) {
+    await autoMatchAll();
   }
 
   return { synced: totalSynced, skipped: totalSkipped, errors };

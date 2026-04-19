@@ -94,6 +94,57 @@ async function migrate() {
     console.log('[migrate] Added enabled_account_ids column; wiped Plaid-imported transactions for account filter setup');
   }
 
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS tenant_id INTEGER REFERENCES tenants(id)`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS match_confidence TEXT`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS needs_review BOOLEAN DEFAULT false`);
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS categorization_rules (
+      id SERIAL PRIMARY KEY,
+      keyword TEXT NOT NULL,
+      category TEXT NOT NULL,
+      type TEXT NOT NULL DEFAULT 'expense',
+      priority INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
+  const { rows: ruleCount } = await db.query('SELECT COUNT(*) FROM categorization_rules');
+  if (parseInt(ruleCount[0].count, 10) === 0) {
+    const defaults = [
+      ['HOME DEPOT',       'Repairs',       'expense', 10],
+      ['LOWES',            'Repairs',       'expense', 10],
+      ['ACE HARDWARE',     'Repairs',       'expense', 10],
+      ['STATE FARM',       'Insurance',     'expense', 10],
+      ['ALLSTATE',         'Insurance',     'expense', 10],
+      ['GEICO',            'Insurance',     'expense', 10],
+      ['FARMERS',          'Insurance',     'expense', 10],
+      ['LIBERTY MUTUAL',   'Insurance',     'expense', 10],
+      ['SDGE',             'Utilities',     'expense', 10],
+      ['SAN DIEGO GAS',    'Utilities',     'expense', 10],
+      ['SOCAL GAS',        'Utilities',     'expense', 10],
+      ['PG&E',             'Utilities',     'expense', 10],
+      ['CITY OF SAN DIEGO','Utilities',     'expense', 10],
+      ['SDCWA',            'Utilities',     'expense', 10],
+      ['WATER',            'Utilities',     'expense',  5],
+      ['COUNTY TREASURER', 'Property Tax',  'expense', 10],
+      ['PROPERTY TAX',     'Property Tax',  'expense', 10],
+      ['TAX COLLECTOR',    'Property Tax',  'expense', 10],
+      ['LANDSCAPING',      'Landscaping',   'expense', 10],
+      ['LAWN',             'Landscaping',   'expense',  5],
+      ['GARDENER',         'Landscaping',   'expense', 10],
+      ['HOA',              'HOA',           'expense', 10],
+      ['HOMEOWNERS ASSOC', 'HOA',           'expense', 10],
+    ];
+    for (const [keyword, category, type, priority] of defaults) {
+      await db.query(
+        'INSERT INTO categorization_rules (keyword, category, type, priority) VALUES ($1, $2, $3, $4)',
+        [keyword, category, type, priority]
+      );
+    }
+    console.log('[migrate] Seeded default categorization rules');
+  }
+
   await db.query(`
     CREATE TABLE IF NOT EXISTS settings (
       key TEXT PRIMARY KEY,
