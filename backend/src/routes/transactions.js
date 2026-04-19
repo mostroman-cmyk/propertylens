@@ -108,4 +108,29 @@ router.post('/bulk-categorize', async (req, res) => {
   }
 });
 
+// Bulk update category/property/tenant for multiple transactions
+router.post('/bulk-update', async (req, res) => {
+  const { ids, category, property_id, tenant_id, clear } = req.body;
+  if (!ids?.length) return res.status(400).json({ error: 'ids required' });
+  try {
+    if (clear) {
+      await db.query(
+        `UPDATE transactions SET category='Other', property_id=NULL, tenant_id=NULL, match_confidence=NULL, needs_review=false WHERE id = ANY($1::int[])`,
+        [ids]
+      );
+    } else {
+      const sets = [];
+      const params = [ids];
+      if (category    !== undefined) { params.push(category);          sets.push(`category=$${params.length}`);    }
+      if (property_id !== undefined) { params.push(property_id||null); sets.push(`property_id=$${params.length}`); }
+      if (tenant_id   !== undefined) { params.push(tenant_id||null);   sets.push(`tenant_id=$${params.length}`);   }
+      if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
+      await db.query(`UPDATE transactions SET ${sets.join(', ')} WHERE id = ANY($1::int[])`, params);
+    }
+    res.json({ updated: ids.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

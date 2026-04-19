@@ -22,6 +22,13 @@ export const autoMatchRent            = ()         => api.post('/transactions/au
 export const assignTenant             = (id, data) => api.put(`/transactions/${id}/assign-tenant`, data).then(r => r.data);
 export const bulkCategorize           = (data)     => api.post('/transactions/bulk-categorize', data).then(r => r.data);
 export const backfillPropertyTenant   = ()         => api.post('/transactions/backfill-property-tenant').then(r => r.data);
+export const bulkUpdateTransactions   = (data)     => api.post('/transactions/bulk-update', data).then(r => r.data);
+
+export const getPredictions           = ()         => api.get('/predictions').then(r => r.data);
+export const runPredictions           = ()         => api.post('/predictions/predict-all').then(r => r.data);
+export const acceptPrediction         = (id, data) => api.post(`/predictions/${id}/accept`, data || {}).then(r => r.data);
+export const rejectPrediction         = (id)       => api.post(`/predictions/${id}/reject`).then(r => r.data);
+export const acceptAllHighConfidence  = ()         => api.post('/predictions/accept-all-high').then(r => r.data);
 
 export const getCategorizationRules    = ()      => api.get('/categorization-rules').then(r => r.data);
 export const createCategorizationRule  = (data)  => api.post('/categorization-rules', data).then(r => r.data);

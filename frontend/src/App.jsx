@@ -4,6 +4,8 @@ import Properties from './pages/Properties';
 import Tenants from './pages/Tenants';
 import Transactions from './pages/Transactions';
 import CategorizationRules from './pages/CategorizationRules';
+import ReviewClassifications from './pages/ReviewClassifications';
+import Predictions from './pages/Predictions';
 import Settings from './pages/Settings';
 import './App.css';
 
@@ -30,6 +32,8 @@ export default function App() {
           <NavLink to="/tenants">Tenants</NavLink>
           <NavLink to="/transactions">Transactions</NavLink>
           <NavLink to="/categorization-rules">Rules</NavLink>
+          <NavLink to="/review">Review</NavLink>
+          <NavLink to="/predictions">Predictions</NavLink>
           <NavLink to="/settings">Settings</NavLink>
         </nav>
         <main className="content">
@@ -39,6 +43,8 @@ export default function App() {
             <Route path="/tenants" element={<Tenants />} />
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/categorization-rules" element={<CategorizationRules />} />
+            <Route path="/review" element={<ReviewClassifications />} />
+            <Route path="/predictions" element={<Predictions />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>

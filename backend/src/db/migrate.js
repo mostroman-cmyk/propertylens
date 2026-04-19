@@ -168,6 +168,13 @@ async function migrate() {
     );
   }
 
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS predicted_category TEXT`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS predicted_property_id INTEGER`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS predicted_tenant_id INTEGER`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS prediction_confidence TEXT`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS prediction_reasoning TEXT`);
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS prediction_accepted BOOLEAN DEFAULT FALSE`);
+
   console.log('[migrate] Database ready');
 }
 
