@@ -65,6 +65,9 @@ export default function Settings() {
   // { connId, deselected: [{account_id, count}], total_count, newAccountIds, addedCount, accountNames }
   const [cleaningUp, setCleaningUp] = useState(false);
 
+  // Full re-sync state: { connId, step: 'confirm'|'working', deleteExisting: bool }
+  const [fullResync, setFullResync] = useState(null);
+
   // Bank connections state
   const [connections, setConnections] = useState([]);
   const [connectionAccounts, setConnectionAccounts] = useState({});
@@ -229,6 +232,28 @@ export default function Settings() {
     const conn = connections.find(c => c.id === accountConfirm.connId);
     setPendingSelections(prev => ({ ...prev, [accountConfirm.connId]: conn?.enabled_account_ids || [] }));
     setAccountConfirm(null);
+  };
+
+  const handleFullResync = async (deleteExisting) => {
+    if (!fullResync) return;
+    const connId = fullResync.connId;
+    const conn = connections.find(c => c.id === connId);
+    setFullResync({ connId, step: 'working', deleteExisting });
+    try {
+      const { data } = await api.post(`/plaid/connections/${connId}/full-resync`, { delete_existing: deleteExisting });
+      const parts = [];
+      if (deleteExisting && data.deleted > 0) parts.push(`deleted ${data.deleted} old transaction${data.deleted !== 1 ? 's' : ''}`);
+      parts.push(`imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''} from Plaid`);
+      if (data.errors?.length) parts.push(`${data.errors.length} error(s)`);
+      showToast(`${conn?.institution_name}: ${parts.join(', ')}`);
+      setFullResync(null);
+      if (data.errors?.length) {
+        setSyncResult({ message: data.errors.map(e => `${e.institution}: ${e.error}`).join(' | '), type: 'warn' });
+      }
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Full re-sync failed');
+      setFullResync(null);
+    }
   };
 
   const handleCleanupOrphans = async () => {
@@ -482,12 +507,43 @@ export default function Settings() {
             </div>
           )}
 
+          {/* Full re-sync confirmation dialog */}
+          {fullResync && fullResync.step === 'confirm' && (() => {
+            const conn = connections.find(c => c.id === fullResync.connId);
+            const txCount = (conn?.enabled_account_ids || []).length;
+            return (
+              <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
+                <div style={{ fontWeight: 600, marginBottom: 8 }}>Full Re-Sync: {conn?.institution_name}</div>
+                <p style={{ fontSize: 13, color: '#555', margin: '0 0 12px' }}>
+                  This will clear the saved sync position and re-import all available history from Plaid (up to 24 months).
+                  Would you like to delete existing transactions first for a clean import?
+                </p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button className="btn-primary" style={{ background: '#E30613', borderColor: '#E30613' }} onClick={() => handleFullResync(true)}>
+                    Delete existing + re-import all
+                  </button>
+                  <button className="btn-secondary" onClick={() => handleFullResync(false)}>
+                    Keep existing, just re-import missing
+                  </button>
+                  <button className="btn-edit" onClick={() => setFullResync(null)}>Cancel</button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {fullResync && fullResync.step === 'working' && (
+            <div style={{ padding: '12px 16px', background: '#FAFAFA', border: '1px solid #E5E5E5', borderRadius: 2, marginBottom: 20, fontSize: 13, color: '#555' }}>
+              Syncing full history from Plaid — this may take a minute or two for large accounts...
+            </div>
+          )}
+
           {connections.map(conn => {
             const accounts = connectionAccounts[conn.id];
             const selected = pendingSelections[conn.id] || [];
             const savedIds = conn.enabled_account_ids || [];
             const isSaving = savingAccounts[conn.id];
             const selectionChanged = JSON.stringify([...selected].sort()) !== JSON.stringify([...savedIds].sort());
+            const isResyncing = fullResync?.connId === conn.id && fullResync?.step === 'working';
 
             return (
               <div key={conn.id} style={{ marginBottom: 24 }}>
@@ -512,13 +568,21 @@ export default function Settings() {
                         </div>
                       </label>
                     ))}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
                       <button
                         className="btn-primary"
                         disabled={isSaving || selected.length === 0 || !selectionChanged || !!accountConfirm}
                         onClick={() => handleSaveAccounts(conn.id)}
                       >
                         {isSaving ? 'Checking...' : 'Save Selection'}
+                      </button>
+                      <button
+                        className="btn-edit"
+                        disabled={!!fullResync || !!accountConfirm}
+                        onClick={() => setFullResync({ connId: conn.id, step: 'confirm' })}
+                        title="Clear sync cursor and re-import full transaction history from Plaid"
+                      >
+                        {isResyncing ? 'Syncing...' : 'Full Re-Sync'}
                       </button>
                       {savedIds.length > 0 && !selectionChanged && (
                         <span style={{ fontSize: 11, color: '#666' }}>

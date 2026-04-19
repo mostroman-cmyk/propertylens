@@ -6,8 +6,8 @@ const { predictAll } = require('../prediction/engine');
 const { backfillPropertyTenant } = require('../matching/backfill');
 
 const RENT_TOLERANCE = 10;
-const START_DATE = '2010-01-01';
-const PAGE_SIZE = 500;
+const PRODUCT_NOT_READY_RETRIES = 5;
+const PRODUCT_NOT_READY_DELAY_MS = 30_000;
 
 function categorize(name, plaidCategory, plaidAmount) {
   const n = name.toLowerCase();
@@ -39,103 +39,149 @@ function classifyTransaction(tx, rentAmounts) {
   return { storedAmount, type, category };
 }
 
-async function syncAll() {
+async function callTransactionsSync(accessToken, cursor, enabledIds) {
+  for (let attempt = 1; attempt <= PRODUCT_NOT_READY_RETRIES; attempt++) {
+    try {
+      const resp = await plaidClient.transactionsSync({
+        access_token: accessToken,
+        cursor: cursor || undefined,
+        options: {
+          include_personal_finance_category: true,
+          account_ids: enabledIds,
+        },
+      });
+      return resp.data;
+    } catch (err) {
+      const errorCode = err.response?.data?.error_code;
+      if (errorCode === 'PRODUCT_NOT_READY' && attempt < PRODUCT_NOT_READY_RETRIES) {
+        console.log(`[sync] PRODUCT_NOT_READY — waiting 30s (attempt ${attempt}/${PRODUCT_NOT_READY_RETRIES})...`);
+        await new Promise(res => setTimeout(res, PRODUCT_NOT_READY_DELAY_MS));
+      } else {
+        throw err;
+      }
+    }
+  }
+}
+
+// Sync a single connection. Returns { synced, skipped, modified, removed, newTxIds }
+// or throws on error.
+async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {}) {
+  const enabledIds = conn.enabled_account_ids;
+  if (!enabledIds || enabledIds.length === 0) {
+    return {
+      synced: 0, skipped: 0, modified: 0, removed: 0, newTxIds: [],
+      connectionError: {
+        institution: conn.institution_name,
+        error_code: 'NO_ACCOUNTS_SELECTED',
+        error: `No accounts selected for ${conn.institution_name}. Open Account Settings and choose which accounts to sync.`,
+      },
+    };
+  }
+
+  let cursor = forceFullSync ? null : (conn.cursor || null);
+  let batchNum = 0;
+  let totalSynced = 0, totalSkipped = 0, totalModified = 0, totalRemoved = 0;
+  const newTxIds = [];
+
+  console.log(`[sync] ${conn.institution_name}: Starting sync (cursor=${cursor ? 'saved' : 'null — full history'})`);
+
+  while (true) {
+    batchNum++;
+    const { added, modified, removed, has_more, next_cursor } = await callTransactionsSync(conn.access_token, cursor, enabledIds);
+
+    console.log(`[sync] ${conn.institution_name} — Batch ${batchNum}: ${added.length} added, ${modified.length} modified, ${removed.length} removed, has_more=${has_more}`);
+
+    const client = await db.connect();
+    try {
+      await client.query('BEGIN');
+
+      for (const tx of added) {
+        if (tx.pending) { totalSkipped++; continue; }
+        const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
+        const result = await client.query(
+          `INSERT INTO transactions (date, description, amount, type, category, plaid_transaction_id, plaid_account_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (plaid_transaction_id) DO NOTHING
+           RETURNING id`,
+          [tx.date, tx.name, storedAmount, type, category, tx.transaction_id, tx.account_id]
+        );
+        if (result.rowCount > 0) { totalSynced++; newTxIds.push(result.rows[0].id); }
+        else totalSkipped++;
+      }
+
+      for (const tx of modified) {
+        if (tx.pending) continue;
+        const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
+        const result = await client.query(
+          `UPDATE transactions SET date=$1, description=$2, amount=$3, type=$4, category=$5, plaid_account_id=$6
+           WHERE plaid_transaction_id=$7 AND property_id IS NULL AND tenant_id IS NULL`,
+          [tx.date, tx.name, storedAmount, type, category, tx.account_id, tx.transaction_id]
+        );
+        if (result.rowCount > 0) totalModified++;
+      }
+
+      for (const tx of removed) {
+        await client.query('DELETE FROM transactions WHERE plaid_transaction_id=$1', [tx.transaction_id]);
+        totalRemoved++;
+      }
+
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+
+    cursor = next_cursor;
+    if (!has_more) break;
+  }
+
+  await db.query('UPDATE bank_connections SET cursor=$1 WHERE id=$2', [cursor, conn.id]);
+  console.log(`[sync] ${conn.institution_name} — Complete: ${totalSynced} new, ${totalModified} modified, ${totalRemoved} removed`);
+
+  return { synced: totalSynced, skipped: totalSkipped, modified: totalModified, removed: totalRemoved, newTxIds };
+}
+
+async function syncAll({ forceFullSync = false } = {}) {
   const { rows: connections } = await db.query('SELECT * FROM bank_connections');
   if (connections.length === 0) return { synced: 0, skipped: 0, errors: [] };
 
   const { rows: rentRows } = await db.query('SELECT DISTINCT monthly_rent FROM tenants');
   const rentAmounts = rentRows.map(r => parseFloat(r.monthly_rent));
 
-  const endDate = new Date().toISOString().split('T')[0];
   let totalSynced = 0, totalSkipped = 0;
   const errors = [];
+  const allNewTxIds = [];
 
   for (const conn of connections) {
-    const enabledIds = conn.enabled_account_ids;
-    if (!enabledIds || enabledIds.length === 0) {
-      console.warn(`[sync] Skipping ${conn.institution_name} — no accounts selected`);
-      errors.push({
-        institution: conn.institution_name,
-        error_code: 'NO_ACCOUNTS_SELECTED',
-        error: `No accounts selected for ${conn.institution_name}. Open Account Settings on the dashboard and choose which accounts to sync.`,
-      });
-      continue;
-    }
-
     try {
-      let allTransactions = [];
-      let offset = 0;
-
-      while (true) {
-        const resp = await plaidClient.transactionsGet({
-          access_token: conn.access_token,
-          start_date: START_DATE,
-          end_date: endDate,
-          options: { count: PAGE_SIZE, offset, include_personal_finance_category: true, account_ids: enabledIds },
-        });
-
-        const { transactions, total_transactions } = resp.data;
-        allTransactions = allTransactions.concat(transactions);
-        offset += transactions.length;
-        console.log(`[${conn.institution_name}] fetched ${offset}/${total_transactions}`);
-        if (offset >= total_transactions) break;
+      const result = await syncConnection(conn, rentAmounts, { forceFullSync });
+      if (result.connectionError) {
+        errors.push(result.connectionError);
+        continue;
       }
-
-      const client = await db.connect();
-      try {
-        await client.query('BEGIN');
-        let synced = 0, skipped = 0;
-        const newTxIds = [];
-        for (const tx of allTransactions) {
-          if (tx.pending) { skipped++; continue; }
-          const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
-          const result = await client.query(
-            `INSERT INTO transactions (date, description, amount, type, category, plaid_transaction_id, plaid_account_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (plaid_transaction_id) DO NOTHING
-             RETURNING id`,
-            [tx.date, tx.name, storedAmount, type, category, tx.transaction_id, tx.account_id]
-          );
-          if (result.rowCount > 0) { synced++; newTxIds.push(result.rows[0].id); }
-          else skipped++;
-        }
-        await client.query('COMMIT');
-        totalSynced += synced;
-        totalSkipped += skipped;
-        console.log(`[${conn.institution_name}] +${synced} new, ${skipped} already existed`);
-
-        if (newTxIds.length > 0) {
-          await applyRulesToTransactions(newTxIds);
-        }
-      } catch (err) {
-        await client.query('ROLLBACK');
-        throw err;
-      } finally {
-        client.release();
-      }
+      totalSynced += result.synced;
+      totalSkipped += result.skipped;
+      allNewTxIds.push(...result.newTxIds);
     } catch (err) {
       const plaidError = err.response?.data;
       const errorCode = plaidError?.error_code;
       const errorMessage = plaidError?.error_message || err.message;
 
-      console.error(`[sync] Failed for ${conn.institution_name}:`);
-      console.error(`[sync]   error_code: ${errorCode}`);
-      console.error(`[sync]   error_message: ${errorMessage}`);
-      if (plaidError) console.error(`[sync]   full Plaid error:`, JSON.stringify(plaidError, null, 2));
+      console.error(`[sync] Failed for ${conn.institution_name}: ${errorCode} — ${errorMessage}`);
+      if (plaidError) console.error(`[sync] Full Plaid error:`, JSON.stringify(plaidError, null, 2));
 
       const userMessage = errorCode === 'PRODUCT_NOT_READY'
-        ? 'Plaid is still preparing your transactions — this can take a few minutes after connecting. Please try again shortly.'
+        ? 'Plaid is still preparing your transactions (historical pull in progress). This typically takes 2–5 minutes after connecting. Try again shortly.'
         : errorMessage;
 
-      errors.push({
-        institution: conn.institution_name,
-        error_code: errorCode || null,
-        error: userMessage,
-      });
+      errors.push({ institution: conn.institution_name, error_code: errorCode || null, error: userMessage });
     }
   }
 
-  if (totalSynced > 0) {
+  if (allNewTxIds.length > 0) {
+    await applyRulesToTransactions(allNewTxIds);
     await autoMatchAll();
     await backfillPropertyTenant();
     await predictAll();
@@ -144,4 +190,28 @@ async function syncAll() {
   return { synced: totalSynced, skipped: totalSkipped, errors };
 }
 
-module.exports = { syncAll };
+// Sync a single connection by ID (used by full-resync endpoint)
+async function syncOne(connectionId, { forceFullSync = false } = {}) {
+  const { rows } = await db.query('SELECT * FROM bank_connections WHERE id=$1', [connectionId]);
+  if (!rows.length) throw new Error('Connection not found');
+  const conn = rows[0];
+
+  const { rows: rentRows } = await db.query('SELECT DISTINCT monthly_rent FROM tenants');
+  const rentAmounts = rentRows.map(r => parseFloat(r.monthly_rent));
+
+  const result = await syncConnection(conn, rentAmounts, { forceFullSync });
+  if (result.connectionError) {
+    return { synced: 0, skipped: 0, errors: [result.connectionError] };
+  }
+
+  if (result.newTxIds.length > 0) {
+    await applyRulesToTransactions(result.newTxIds);
+    await autoMatchAll();
+    await backfillPropertyTenant();
+    await predictAll();
+  }
+
+  return { synced: result.synced, skipped: result.skipped, modified: result.modified, removed: result.removed, errors: [] };
+}
+
+module.exports = { syncAll, syncOne };

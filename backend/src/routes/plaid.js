@@ -3,7 +3,7 @@ const router = express.Router();
 const { Products, CountryCode } = require('plaid');
 const plaidClient = require('../plaid/client');
 const db = require('../db/db');
-const { syncAll } = require('../plaid/sync');
+const { syncAll, syncOne } = require('../plaid/sync');
 
 router.post('/create-link-token', async (req, res) => {
   try {
@@ -181,10 +181,42 @@ router.post('/legacy-resync', async (req, res) => {
   try {
     const { rows: del } = await db.query(`DELETE FROM transactions WHERE ${LEGACY_WHERE} RETURNING id`);
     console.log(`[legacy-resync] Deleted ${del.length} legacy transactions, starting fresh sync...`);
-    const { syncAll } = require('../plaid/sync');
     const result = await syncAll();
     res.json({ deleted: del.length, synced: result.synced, skipped: result.skipped, errors: result.errors });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full re-sync a single connection: clear cursor, optionally delete its transactions, re-import all history
+router.post('/connections/:connectionId/full-resync', async (req, res) => {
+  const { delete_existing } = req.body;
+  const { connectionId } = req.params;
+  try {
+    const { rows: [conn] } = await db.query('SELECT * FROM bank_connections WHERE id=$1', [connectionId]);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+    let deleted = 0;
+    if (delete_existing) {
+      const accountIds = conn.enabled_account_ids || [];
+      if (accountIds.length > 0) {
+        const result = await db.query(
+          'DELETE FROM transactions WHERE plaid_account_id = ANY($1::text[]) RETURNING id',
+          [accountIds]
+        );
+        deleted = result.rowCount;
+        console.log(`[full-resync] Deleted ${deleted} existing transactions for ${conn.institution_name}`);
+      }
+    }
+
+    // Clear cursor so sync fetches full history
+    await db.query('UPDATE bank_connections SET cursor=NULL WHERE id=$1', [connectionId]);
+    console.log(`[full-resync] Cursor cleared for ${conn.institution_name}, starting historical sync...`);
+
+    const result = await syncOne(connectionId, { forceFullSync: true });
+    res.json({ deleted, synced: result.synced, skipped: result.skipped, errors: result.errors });
+  } catch (err) {
+    console.error('[full-resync] Error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
