@@ -1,6 +1,18 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
 
+const FILTER_OPTIONS = [
+  { key: '7d',         label: '7 Days' },
+  { key: 'this_month', label: 'This Month' },
+  { key: 'last_month', label: 'Last Month' },
+  { key: '3m',         label: '3 Months' },
+  { key: '6m',         label: '6 Months' },
+  { key: 'ytd',        label: 'YTD' },
+  { key: '1y',         label: '1 Year' },
+  { key: 'all',        label: 'All Time' },
+  { key: 'custom',     label: 'Custom Range' },
+];
+
 function getMonthOptions() {
   const now = new Date();
   return Array.from({ length: 13 }, (_, i) => {
@@ -12,9 +24,55 @@ function getMonthOptions() {
 }
 const MONTH_OPTIONS = getMonthOptions();
 
+function toYMD(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function currentMonthKey() {
   const now = new Date();
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function getDateRange(filterKey, customStart, customEnd) {
+  const now = new Date();
+  const today = toYMD(now);
+
+  switch (filterKey) {
+    case '7d': {
+      const s = new Date(now); s.setDate(s.getDate() - 6);
+      return { startDate: toYMD(s), endDate: today };
+    }
+    case 'this_month': {
+      const s = new Date(now.getFullYear(), now.getMonth(), 1);
+      return { startDate: toYMD(s), endDate: today };
+    }
+    case 'last_month': {
+      const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const e = new Date(now.getFullYear(), now.getMonth(), 0);
+      return { startDate: toYMD(s), endDate: toYMD(e) };
+    }
+    case '3m': {
+      const s = new Date(now); s.setMonth(s.getMonth() - 3);
+      return { startDate: toYMD(s), endDate: today };
+    }
+    case '6m': {
+      const s = new Date(now); s.setMonth(s.getMonth() - 6);
+      return { startDate: toYMD(s), endDate: today };
+    }
+    case 'ytd': {
+      return { startDate: `${now.getFullYear()}-01-01`, endDate: today };
+    }
+    case '1y': {
+      const s = new Date(now); s.setFullYear(s.getFullYear() - 1);
+      return { startDate: toYMD(s), endDate: today };
+    }
+    case 'all':
+      return { startDate: null, endDate: null };
+    case 'custom':
+      return { startDate: customStart || null, endDate: customEnd || null };
+    default:
+      return { startDate: null, endDate: null };
+  }
 }
 
 function fmtDate(dateStr) {
@@ -23,32 +81,76 @@ function fmtDate(dateStr) {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+function fmtDateFull(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function RangeLabel({ filterKey, startDate, endDate }) {
+  if (filterKey === 'all' || (!startDate && !endDate)) {
+    return <div className="date-filter-label">Showing: All time</div>;
+  }
+  const start = startDate ? fmtDateFull(startDate) : '—';
+  const end = endDate ? fmtDateFull(endDate) : '—';
+  return <div className="date-filter-label">Showing: {start} – {end}</div>;
+}
+
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [txLoading, setTxLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [fullResyncing, setFullResyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
 
-  const fetchTransactions = useCallback(() =>
-    getTransactions().then(setTransactions), []);
+  const [dateFilter, setDateFilter] = useState('this_month');
+  const [customStart, setCustomStart] = useState('');
+  const [customEnd, setCustomEnd] = useState('');
+
+  const { startDate, endDate } = getDateRange(dateFilter, customStart, customEnd);
+
+  const fetchTransactions = useCallback(async (params) => {
+    setTxLoading(true);
+    try {
+      const data = await getTransactions(params);
+      setTransactions(data);
+    } finally {
+      setTxLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    Promise.all([getTenants(), getTransactions()])
-      .then(([t, tx]) => { setTenants(t); setTransactions(tx); })
+    const params = {};
+    if (startDate) params.startDate = startDate;
+    if (endDate) params.endDate = endDate;
+    fetchTransactions(params);
+  }, [startDate, endDate, fetchTransactions]);
+
+  useEffect(() => {
+    getTenants()
+      .then(setTenants)
       .catch(e => setError(e.message))
       .finally(() => setLoading(false));
   }, []);
+
+  const handleFilterClick = (key) => {
+    setDateFilter(key);
+    if (key !== 'custom') { setCustomStart(''); setCustomEnd(''); }
+  };
 
   const handleFullResync = async () => {
     setFullResyncing(true);
     setSyncResult(null);
     try {
       const { data } = await api.post('/plaid/full-resync-all');
-      await fetchTransactions();
+      const params = {};
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      await fetchTransactions(params);
       let msg, type;
       if (data.errors?.length) {
         const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
@@ -71,7 +173,10 @@ export default function Dashboard() {
     setSyncResult(null);
     try {
       const { data } = await api.post('/plaid/sync');
-      await fetchTransactions();
+      const params = {};
+      if (startDate) params.startDate = startDate;
+      if (endDate) params.endDate = endDate;
+      await fetchTransactions(params);
       let msg, type;
       if (data.errors?.length) {
         const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
@@ -95,11 +200,9 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  // Month-scoped calculations
-  const monthTxs = transactions.filter(tx => tx.date && tx.date.startsWith(selectedMonth));
-  const monthIncome   = monthTxs.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-  const monthExpenses = Math.abs(monthTxs.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
-  const netIncome     = monthIncome - monthExpenses;
+  const income   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+  const expenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
+  const netIncome = income - expenses;
 
   const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
   const unmatchedIncome  = transactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
@@ -115,13 +218,15 @@ export default function Dashboard() {
     return { tenant, paid: !!paidTx, paidDate: paidTx?.date || null };
   });
 
-  const paidCount    = rentStatus.filter(r => r.paid).length;
+  const paidCount     = rentStatus.filter(r => r.paid).length;
   const unpaidTenants = rentStatus.filter(r => !r.paid);
-  const outstanding  = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
-  const paidPct      = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
+  const outstanding   = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
+  const paidPct       = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
 
   const selectedMonthLabel = MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth;
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
+
+  const isCustomActive = dateFilter === 'custom';
 
   return (
     <div>
@@ -163,15 +268,58 @@ export default function Dashboard() {
       ) : null}
       {tenants.length > 0 && (
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
-          Showing rent status for <strong>{selectedMonthLabel}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
-          Payments deposited on the 25th–31st are counted toward the following month.
+          Rent status for <strong>{selectedMonthLabel}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
         </div>
       )}
 
+      {/* ── Date Filter Bar ── */}
+      <div className="date-filter-bar">
+        {FILTER_OPTIONS.map(opt => (
+          <button
+            key={opt.key}
+            className={`date-filter-btn${dateFilter === opt.key ? ' active' : ''}`}
+            onClick={() => handleFilterClick(opt.key)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {isCustomActive && (
+        <div className="date-range-inputs">
+          <input
+            type="date"
+            value={customStart}
+            onChange={e => setCustomStart(e.target.value)}
+          />
+          <span style={{ fontSize: 12, color: '#666' }}>to</span>
+          <input
+            type="date"
+            value={customEnd}
+            onChange={e => setCustomEnd(e.target.value)}
+          />
+        </div>
+      )}
+
+      <RangeLabel filterKey={dateFilter} startDate={startDate} endDate={endDate} />
+
+      {/* ── KPIs ── */}
       <div className="kpi-row">
         <div className="kpi-item">
           <div className="kpi-label">Rent Roll / Mo</div>
           <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Income</div>
+          <div className="kpi-value">{txLoading ? '…' : `$${income.toLocaleString()}`}</div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Expenses</div>
+          <div className={`kpi-value${expenses > 0 ? ' negative' : ''}`}>{txLoading ? '…' : `$${expenses.toLocaleString()}`}</div>
+        </div>
+        <div className="kpi-item">
+          <div className="kpi-label">Net Income</div>
+          <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>{txLoading ? '…' : `$${netIncome.toLocaleString()}`}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Collected ({selectedMonthLabel.split(' ')[0]})</div>
@@ -181,20 +329,22 @@ export default function Dashboard() {
           <div className="kpi-label">Outstanding</div>
           <div className={`kpi-value${outstanding > 0 ? ' negative' : ' muted'}`}>${outstanding.toLocaleString()}</div>
         </div>
-        <div className="kpi-item">
-          <div className="kpi-label">Net ({selectedMonthLabel.split(' ')[0]})</div>
-          <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>${netIncome.toLocaleString()}</div>
-        </div>
-        <div className="kpi-item">
-          <div className="kpi-label">Tenants</div>
-          <div className="kpi-value muted">{tenants.length}</div>
-        </div>
       </div>
 
       <div className="split-layout">
         {/* ── Recent Transactions ── */}
         <div style={{ minWidth: 0, flex: '1 1 0' }}>
-          <h2 className="section-title">Recent Transactions</h2>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h2 className="section-title" style={{ margin: 0 }}>
+              Recent Transactions
+              {txLoading && <span style={{ fontWeight: 400, color: '#aaa', marginLeft: 8 }}>loading…</span>}
+            </h2>
+            {transactions.length > 50 && (
+              <a href="/transactions" style={{ fontSize: 12, color: '#666', textDecoration: 'underline' }}>
+                View all {transactions.length}
+              </a>
+            )}
+          </div>
           <div style={{ overflowX: 'auto' }}>
             <table style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
               <colgroup>
@@ -218,7 +368,7 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody>
-                {transactions.slice(0, 20).map((tx) => (
+                {transactions.slice(0, 50).map((tx) => (
                   <tr key={tx.id}>
                     <td className="nowrap mono" style={{ fontSize: 12 }}>{fmtDate(tx.date)}</td>
                     <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.description}</td>
@@ -235,8 +385,8 @@ export default function Dashboard() {
                     </td>
                   </tr>
                 ))}
-                {transactions.length === 0 && (
-                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions. Go to Settings → Bank Connections to sync.</td></tr>
+                {transactions.length === 0 && !txLoading && (
+                  <tr><td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions in this range. Go to Settings → Bank Connections to sync.</td></tr>
                 )}
               </tbody>
             </table>
@@ -273,7 +423,6 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {/* Summary row */}
               {tenants.length > 0 && (
                 <tr style={{ background: '#F9F9F9', fontWeight: 600 }}>
                   <td colSpan={2} style={{ fontSize: 12, paddingTop: 6, paddingBottom: 6 }}>

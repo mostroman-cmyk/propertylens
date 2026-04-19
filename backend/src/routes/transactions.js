@@ -15,7 +15,15 @@ const SELECT_TX = `
 
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query(SELECT_TX + ' ORDER BY tx.date DESC, tx.id DESC');
+    const { startDate, endDate } = req.query;
+    const params = [];
+    let where = '';
+    if (startDate) { params.push(startDate); where += ` AND tx.date >= $${params.length}`; }
+    if (endDate)   { params.push(endDate);   where += ` AND tx.date <= $${params.length}`; }
+    const result = await db.query(
+      SELECT_TX + (where ? ' WHERE 1=1' + where : '') + ' ORDER BY tx.date DESC, tx.id DESC',
+      params
+    );
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });

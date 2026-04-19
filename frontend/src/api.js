@@ -11,7 +11,7 @@ export const getTenants      = ()         => api.get('/tenants').then(r => r.dat
 export const createTenant    = (data)     => api.post('/tenants', data).then(r => r.data);
 export const updateTenant    = (id, data) => api.put(`/tenants/${id}`, data).then(r => r.data);
 
-export const getTransactions    = ()         => api.get('/transactions').then(r => r.data);
+export const getTransactions    = (params)   => api.get('/transactions', { params }).then(r => r.data);
 export const createTransaction  = (data)     => api.post('/transactions', data).then(r => r.data);
 export const updateTransaction  = (id, data) => api.put(`/transactions/${id}`, data).then(r => r.data);
 

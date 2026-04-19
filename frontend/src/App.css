@@ -685,6 +685,76 @@ button, .btn-primary, .btn-secondary, .btn-edit, .btn-sm, .btn-danger {
   .split-layout { grid-template-columns: 1fr; }
 }
 
+/* ── DATE FILTER BAR ───────────────────────────────────────────────── */
+
+.date-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  margin-bottom: 12px;
+  border: 1px solid #000;
+  border-radius: 2px;
+  width: fit-content;
+  overflow: hidden;
+}
+
+.date-filter-btn {
+  padding: 5px 13px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  background: #fff;
+  color: #666;
+  border: none;
+  border-right: 1px solid #000;
+  border-radius: 0;
+  letter-spacing: 0.02em;
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+  line-height: 1.4;
+}
+
+.date-filter-btn:last-child { border-right: none; }
+.date-filter-btn.active { background: #000; color: #fff; }
+.date-filter-btn:hover:not(.active) { background: #F5F5F5; color: #000; }
+
+@media (max-width: 900px) {
+  .date-filter-bar {
+    border: none;
+    gap: 4px;
+    overflow: visible;
+  }
+  .date-filter-btn {
+    border: 1px solid #000;
+    border-radius: 2px;
+  }
+}
+
+.date-filter-label {
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  color: #666;
+  margin-bottom: 20px;
+  letter-spacing: 0.02em;
+}
+
+.date-range-inputs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.date-range-inputs input[type="date"] {
+  border: 1px solid #000;
+  border-radius: 2px;
+  padding: 4px 8px;
+  font-size: 12px;
+  font-family: 'Inter', 'Helvetica Neue', sans-serif;
+  color: #000;
+  background: #fff;
+}
+
 /* ── ACCOUNT SETTINGS (compact) ────────────────────────────────────── */
 
 .account-item {
