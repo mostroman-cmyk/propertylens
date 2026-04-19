@@ -68,6 +68,10 @@ export default function Settings() {
   // Full re-sync state: { connId, step: 'confirm'|'working', deleteExisting: bool }
   const [fullResync, setFullResync] = useState(null);
 
+  // Reconnect state: connId being reconnected, or null
+  const [reconnectConnId, setReconnectConnId] = useState(null);
+  const [reconnectStatus, setReconnectStatus] = useState(null); // success message after reconnect
+
   // Bank connections state
   const [connections, setConnections] = useState([]);
   const [connectionAccounts, setConnectionAccounts] = useState({});
@@ -161,8 +165,13 @@ export default function Settings() {
     }
   };
 
-  const handleBankConnected = async (institutionName) => {
-    showToast(`${institutionName} connected. Select accounts below.`);
+  const handleBankConnected = async (institutionName, isReconnect = false) => {
+    if (isReconnect) {
+      setReconnectConnId(null);
+      setReconnectStatus(institutionName);
+    } else {
+      showToast(`${institutionName} connected. Select accounts below.`);
+    }
     await fetchConnections();
   };
 
@@ -450,28 +459,65 @@ export default function Settings() {
           </button>
         </div>
 
+        {/* Post-reconnect status message */}
+        {reconnectStatus && (
+          <div className="alert alert-success" style={{ marginBottom: 16 }}>
+            <strong>{reconnectStatus} reconnected.</strong> Plaid is fetching up to 2 years of transaction history — this may take 2–5 minutes.
+            Once ready, click <strong>Full Re-Sync (Pull Complete History)</strong> on the Dashboard or use the Full Re-Sync button in Account Selection below.
+          </div>
+        )}
+
         {connections.length === 0 ? (
           <p style={{ color: '#888', fontSize: 13 }}>No banks connected yet.</p>
         ) : (
-          <table>
-            <thead>
-              <tr><th>Institution</th><th>Connected</th><th>Accounts Selected</th></tr>
-            </thead>
-            <tbody>
-              {connections.map(conn => (
-                <tr key={conn.id}>
-                  <td>{conn.institution_name}</td>
-                  <td className="nowrap" style={{ color: '#666' }}>{new Date(conn.created_at).toLocaleDateString()}</td>
-                  <td style={{ color: '#666' }}>
-                    {conn.enabled_account_ids?.length
-                      ? `${conn.enabled_account_ids.length} account${conn.enabled_account_ids.length !== 1 ? 's' : ''}`
-                      : <span style={{ color: '#E30613' }}>None selected</span>
-                    }
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <>
+            <table>
+              <thead>
+                <tr><th>Institution</th><th>Connected</th><th>Accounts Selected</th><th></th></tr>
+              </thead>
+              <tbody>
+                {connections.map(conn => (
+                  <tr key={conn.id}>
+                    <td>{conn.institution_name}</td>
+                    <td className="nowrap" style={{ color: '#666' }}>{new Date(conn.created_at).toLocaleDateString()}</td>
+                    <td style={{ color: '#666' }}>
+                      {conn.enabled_account_ids?.length
+                        ? `${conn.enabled_account_ids.length} account${conn.enabled_account_ids.length !== 1 ? 's' : ''}`
+                        : <span style={{ color: '#E30613' }}>None selected</span>
+                      }
+                    </td>
+                    <td className="nowrap">
+                      <button className="btn-edit" style={{ fontSize: 11 }} onClick={() => setReconnectConnId(conn.id === reconnectConnId ? null : conn.id)}>
+                        {reconnectConnId === conn.id ? 'Cancel' : 'Reconnect Bank'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {/* Reconnect warning panel */}
+            {reconnectConnId && (() => {
+              const conn = connections.find(c => c.id === reconnectConnId);
+              return (
+                <div style={{ border: '1px solid #E5A800', borderRadius: 2, padding: '16px 20px', marginTop: 16, background: '#FFFBEA' }}>
+                  <div style={{ fontWeight: 600, marginBottom: 8, fontSize: 13 }}>Reconnect {conn?.institution_name} for full history</div>
+                  <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
+                    To get up to 2 years of transaction history, you need to reconnect this bank. Your previously synced
+                    transactions will remain, and we'll merge in any additional history found.
+                  </p>
+                  <p style={{ fontSize: 12, color: '#555', margin: '0 0 12px' }}>
+                    After reconnecting: go to Account Selection below to re-enable your accounts, then click <strong>Full Re-Sync</strong>.
+                  </p>
+                  <ConnectBank
+                    replaceConnectionId={reconnectConnId}
+                    buttonLabel={`Reconnect ${conn?.institution_name}`}
+                    onSuccess={handleBankConnected}
+                  />
+                </div>
+              );
+            })()}
+          </>
         )}
       </div>
 

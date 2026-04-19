@@ -13,11 +13,61 @@ router.post('/create-link-token', async (req, res) => {
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',
+      transactions: { days_requested: 730 },
+      webhook: process.env.PLAID_WEBHOOK_URL || 'https://propertylens-production.up.railway.app/api/plaid/webhook',
     });
     res.json({ link_token: response.data.link_token });
   } catch (err) {
     console.error('Plaid create-link-token error:', err.response?.data || err.message);
     res.status(500).json({ error: err.response?.data?.error_message || err.message });
+  }
+});
+
+// Plaid webhook receiver
+router.post('/webhook', async (req, res) => {
+  const { webhook_type, webhook_code, item_id, historical_update_complete, error } = req.body;
+  console.log(`[webhook] ${webhook_type}/${webhook_code} — item_id=${item_id}`, historical_update_complete !== undefined ? `historical_update_complete=${historical_update_complete}` : '');
+  if (error) console.log(`[webhook] Error:`, JSON.stringify(error));
+
+  // When historical data is ready, trigger a sync for that item
+  if (webhook_type === 'TRANSACTIONS' && webhook_code === 'SYNC_UPDATES_AVAILABLE' && historical_update_complete) {
+    try {
+      const { rows } = await db.query('SELECT id FROM bank_connections WHERE item_id=$1', [item_id]);
+      if (rows.length) {
+        console.log(`[webhook] Historical update complete for item ${item_id} — triggering sync for connection ${rows[0].id}`);
+        // Fire-and-forget sync so webhook response is fast
+        syncOne(rows[0].id, { forceFullSync: false }).catch(err =>
+          console.error(`[webhook] Sync error for connection ${rows[0].id}:`, err.message)
+        );
+      } else {
+        console.log(`[webhook] No connection found for item_id=${item_id}`);
+      }
+    } catch (err) {
+      console.error('[webhook] DB lookup error:', err.message);
+    }
+  }
+
+  res.json({ received: true });
+});
+
+// Remove a bank connection from the DB (transactions are kept)
+router.delete('/connections/:connectionId', async (req, res) => {
+  try {
+    const { rows: [conn] } = await db.query('SELECT * FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    if (!conn) return res.status(404).json({ error: 'Connection not found' });
+
+    // Best-effort: tell Plaid to remove the item (ignore errors — may already be gone)
+    try {
+      await plaidClient.itemRemove({ access_token: conn.access_token });
+    } catch (e) {
+      console.warn(`[disconnect] itemRemove failed for ${conn.institution_name}:`, e.response?.data?.error_message || e.message);
+    }
+
+    await db.query('DELETE FROM bank_connections WHERE id=$1', [req.params.connectionId]);
+    console.log(`[disconnect] Removed connection ${req.params.connectionId} (${conn.institution_name}), transactions retained`);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
