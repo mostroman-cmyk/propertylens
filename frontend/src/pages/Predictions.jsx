@@ -1,11 +1,15 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence, bulkAcceptPredictions, getPredictionActivity } from '../api';
+import {
+  getProperties, getTenants, getPredictions, runPredictions,
+  acceptPrediction, rejectPrediction, acceptAllHighConfidence,
+  bulkAcceptPredictions, getPredictionActivity,
+  getSimilarTraining, getMisclassifiedPatterns, bulkFixPredictions,
+} from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
-// Group by normalized_description but preserve per-item display_description
 function groupByNormalized(txs) {
   const map = new Map();
   for (const tx of txs) {
@@ -18,7 +22,6 @@ function groupByNormalized(txs) {
     .map(([key, items]) => ({ key, items }));
 }
 
-// Fields the group is predicting (based on first item)
 function predictingFields(tx) {
   const f = [];
   if (tx.predicted_category) f.push('CATEGORY');
@@ -36,51 +39,316 @@ function PredCell({ value, empty }) {
   return <span className="pred-cell">{value}</span>;
 }
 
-function ExamplesPopover({ tx, onClose }) {
+// Info popover: fetches live similar training data
+function SimilarTrainingPopover({ tx, onClose }) {
   const ref = useRef(null);
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   useEffect(() => {
     const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
     document.addEventListener('mousedown', h);
     return () => document.removeEventListener('mousedown', h);
   }, [onClose]);
 
-  let examples = [];
-  try { examples = JSON.parse(tx.prediction_examples || '[]'); } catch {}
+  useEffect(() => {
+    const norm = tx.normalized_description || tx.description;
+    getSimilarTraining(norm)
+      .then(setRows)
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [tx]);
+
+  // Stored examples (from prediction_examples JSON)
+  let storedExamples = [];
+  try { storedExamples = JSON.parse(tx.prediction_examples || '[]'); } catch {}
 
   return (
     <div ref={ref} style={{
       position: 'absolute', zIndex: 1000, right: 0, top: '100%',
       background: '#fff', border: '1px solid #E5E5E5', borderRadius: 4,
-      boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 14, minWidth: 360, maxWidth: 480,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 14, minWidth: 420, maxWidth: 560,
     }}>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Why this prediction?</div>
-      <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>{tx.prediction_reasoning}</div>
-      {examples.length > 0 && (
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6 }}>Why this prediction?</div>
+      <div style={{ fontSize: 12, color: '#555', marginBottom: 12 }}>{tx.prediction_reasoning}</div>
+
+      <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Similar past classifications
+      </div>
+      {loading && <div style={{ fontSize: 12, color: '#aaa', padding: '6px 0' }}>Loading...</div>}
+      {!loading && rows && rows.length > 0 && (
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+          <thead>
+            <tr style={{ borderBottom: '1px solid #E5E5E5' }}>
+              <th style={{ padding: '3px 6px', textAlign: 'left', color: '#888', fontWeight: 600 }}>Date</th>
+              <th style={{ padding: '3px 6px', textAlign: 'left', color: '#888', fontWeight: 600 }}>Description</th>
+              <th style={{ padding: '3px 6px', textAlign: 'right', color: '#888', fontWeight: 600 }}>Amount</th>
+              <th style={{ padding: '3px 6px', textAlign: 'left', color: '#888', fontWeight: 600 }}>Category</th>
+              <th style={{ padding: '3px 6px', textAlign: 'left', color: '#888', fontWeight: 600 }}>Property</th>
+              <th style={{ padding: '3px 6px', textAlign: 'left', color: '#888', fontWeight: 600 }}>Tenant</th>
+              <th style={{ padding: '3px 6px', textAlign: 'right', color: '#888', fontWeight: 600 }}>Sim</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.id || i} style={{ borderBottom: '1px solid #F5F5F5' }}>
+                <td style={{ padding: '3px 6px', color: '#999', whiteSpace: 'nowrap' }}>
+                  {new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                </td>
+                <td style={{ padding: '3px 6px', color: '#333', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={r.description}>
+                  {r.display_description || r.description}
+                </td>
+                <td style={{ padding: '3px 6px', color: '#555', whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace' }}>
+                  ${Math.abs(parseFloat(r.amount)).toLocaleString()}
+                </td>
+                <td style={{ padding: '3px 6px', color: '#555' }}>{r.category}</td>
+                <td style={{ padding: '3px 6px', color: '#555', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={r.property_name}>
+                  {r.property_name || <span style={{ color: '#ccc' }}>—</span>}
+                </td>
+                <td style={{ padding: '3px 6px', color: '#555' }}>{r.tenant_name || <span style={{ color: '#ccc' }}>—</span>}</td>
+                <td style={{ padding: '3px 6px', color: '#999', whiteSpace: 'nowrap', textAlign: 'right' }}>
+                  {Math.round(r.similarity * 100)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {!loading && (!rows || rows.length === 0) && (
+        <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
+          {storedExamples.length > 0
+            ? 'No similar transactions found (prediction may be from a keyword rule).'
+            : 'No similar classified transactions found. Prediction is based on keyword/amount rule or payer history.'}
+        </div>
+      )}
+      {!loading && storedExamples.length > 0 && rows && rows.length === 0 && (
         <>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Contributing transactions
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '8px 0 4px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Contributing (stored)
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
             <tbody>
-              {examples.map((ex, i) => (
-                <tr key={i} style={{ borderBottom: '1px solid #F0F0F0' }}>
-                  <td style={{ padding: '4px 6px', color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ex.description}>
+              {storedExamples.map((ex, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #F5F5F5' }}>
+                  <td style={{ padding: '3px 6px', color: '#333', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={ex.description}>
                     {ex.description || ex.normalized}
                   </td>
-                  <td style={{ padding: '4px 6px', color: '#555', whiteSpace: 'nowrap' }}>{ex.category}</td>
-                  <td style={{ padding: '4px 6px', color: '#999', whiteSpace: 'nowrap', textAlign: 'right' }}>{ex.similarity}% match</td>
+                  <td style={{ padding: '3px 6px', color: '#555' }}>{ex.category}</td>
+                  <td style={{ padding: '3px 6px', color: '#999', textAlign: 'right' }}>{ex.similarity}%</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </>
       )}
-      {examples.length === 0 && (
-        <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
-          Fallback rule (keyword or amount match), not similarity-based.
+    </div>
+  );
+}
+
+// Modal for bulk-fixing a prediction group
+function BulkFixModal({ group, properties, tenants, onClose, onFixed }) {
+  const { key, items } = group;
+  const first = items[0];
+  const dispDesc = first.display_description || first.description;
+
+  // Detect whether amounts vary in this group
+  const amounts = [...new Set(items.map(tx => Math.abs(parseFloat(tx.amount))))];
+  const amountsVary = amounts.length > 1;
+
+  const [form, setForm] = useState({
+    category:       first.predicted_category || '',
+    property_scope: first.predicted_property_scope || 'single',
+    property_id:    first.predicted_property_id ? String(first.predicted_property_id) : '',
+    tenant_id:      first.predicted_tenant_id   ? String(first.predicted_tenant_id)   : '',
+    fix_historical: true,
+    amount_filter:  amountsVary ? String(Math.abs(parseFloat(first.amount))) : '',
+  });
+  const [saving, setSaving] = useState(false);
+  const [result, setResult] = useState(null);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await bulkFixPredictions({
+        norm_key:      key,
+        category:      form.category || null,
+        property_id:   form.property_scope === 'portfolio' ? null : (form.property_id || null),
+        property_scope: form.property_scope,
+        tenant_id:     form.tenant_id || null,
+        fix_historical: form.fix_historical,
+        amount_filter: form.amount_filter !== '' ? parseFloat(form.amount_filter) : null,
+      });
+      setResult(res);
+      setTimeout(() => { onFixed(res); onClose(); }, 1200);
+    } catch (err) {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Fix Prediction Group" onClose={onClose} onSave={result ? null : handleSave} saveLabel="Apply Fix" width={560}>
+      <div style={{ fontSize: 13, color: '#333', marginBottom: 16, padding: '8px 12px', background: '#F5F5F5', borderRadius: 2 }}>
+        <strong>{dispDesc}</strong>
+        <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>{items.length} transaction{items.length !== 1 ? 's' : ''}</span>
+        {amountsVary && (
+          <div style={{ marginTop: 6, fontSize: 12, color: '#B45309', background: '#FEF9C3', padding: '4px 8px', borderRadius: 2 }}>
+            ⚠ This group has {amounts.length} different amounts: {amounts.map(a => `$${a.toLocaleString()}`).join(', ')}.
+            To assign each amount to a different property, use <strong>Merchant Rules</strong> instead.
+            You can still bulk-fix by filtering to a specific amount below.
+          </div>
+        )}
+      </div>
+
+      {amountsVary && (
+        <div className="form-group">
+          <label>Filter to Amount (optional — blank = fix all amounts)</label>
+          <select className="form-input" value={form.amount_filter}
+            onChange={e => setForm(f => ({ ...f, amount_filter: e.target.value }))}>
+            <option value="">All amounts</option>
+            {amounts.map(a => <option key={a} value={a}>${a.toLocaleString()}</option>)}
+          </select>
         </div>
       )}
-    </div>
+
+      <div className="form-group">
+        <label>Category</label>
+        <select className="form-input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+          <option value="">— Keep current —</option>
+          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label>Property</label>
+        <select
+          className="form-input"
+          value={form.property_scope === 'portfolio' ? 'portfolio' : (form.property_id || '')}
+          onChange={e => {
+            if (e.target.value === 'portfolio') {
+              setForm(f => ({ ...f, property_scope: 'portfolio', property_id: '' }));
+            } else {
+              setForm(f => ({ ...f, property_scope: 'single', property_id: e.target.value }));
+            }
+          }}
+        >
+          <option value="">— Keep current —</option>
+          <option value="portfolio">🏘 All Properties (Portfolio)</option>
+          <option disabled>──────────────</option>
+          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+        </select>
+      </div>
+      <div className="form-group">
+        <label>Tenant</label>
+        <select className="form-input" value={form.tenant_id} onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}>
+          <option value="">— Keep current —</option>
+          {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+        </select>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 4 }}>
+        <input type="checkbox" checked={form.fix_historical}
+          onChange={e => setForm(f => ({ ...f, fix_historical: e.target.checked }))} />
+        Also fix historical classified transactions with this pattern
+      </label>
+      <div style={{ fontSize: 11, color: '#888', marginBottom: 12, paddingLeft: 22 }}>
+        Rewrites past accepted classifications that have a different value — corrects bad training data.
+      </div>
+      {result && (
+        <div style={{ padding: '8px 12px', background: '#DCFCE7', borderRadius: 2, fontSize: 13, color: '#16A34A' }}>
+          Fixed {result.predictions_updated} prediction(s)
+          {result.historical_updated > 0 ? ` + ${result.historical_updated} historical transaction(s)` : ''}. Re-predicting...
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// Misclassified patterns modal
+function MisclassifiedPatternsModal({ properties, tenants, onClose, onFixed }) {
+  const [patterns, setPatterns] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [fixTarget, setFixTarget] = useState(null);
+
+  useEffect(() => {
+    getMisclassifiedPatterns().then(setPatterns).finally(() => setLoading(false));
+  }, []);
+
+  if (fixTarget) {
+    return (
+      <BulkFixModal
+        group={{ key: fixTarget.normalized_description, items: [{ display_description: fixTarget.normalized_description, description: fixTarget.normalized_description, predicted_category: fixTarget.categories?.[0], predicted_property_scope: 'single', predicted_property_id: null, predicted_tenant_id: null, amount: fixTarget.min_amount }] }}
+        properties={properties} tenants={tenants}
+        onClose={() => setFixTarget(null)}
+        onFixed={(res) => {
+          onFixed(res);
+          setFixTarget(null);
+          // Refresh list
+          setLoading(true);
+          getMisclassifiedPatterns().then(setPatterns).finally(() => setLoading(false));
+        }}
+      />
+    );
+  }
+
+  return (
+    <Modal title="Misclassified Patterns" onClose={onClose} width={740}>
+      <div style={{ fontSize: 13, color: '#666', marginBottom: 16 }}>
+        Merchants where the same normalized description has been assigned to different properties or categories.
+        These are likely bad training data causing prediction errors.
+      </div>
+      {loading && <div style={{ color: '#888', fontSize: 13 }}>Loading...</div>}
+      {!loading && patterns && patterns.length === 0 && (
+        <div style={{ color: '#888', fontSize: 13 }}>No inconsistencies found — training data looks clean!</div>
+      )}
+      {!loading && patterns && patterns.length > 0 && (
+        <table className="tx-table" style={{ fontSize: 12 }}>
+          <colgroup>
+            <col /><col style={{ width: 55 }} /><col style={{ width: 200 }} /><col style={{ width: 150 }} /><col style={{ width: 100 }} /><col style={{ width: 80 }} />
+          </colgroup>
+          <thead>
+            <tr>
+              <th>Pattern</th>
+              <th className="num">Count</th>
+              <th>Properties Assigned</th>
+              <th>Categories</th>
+              <th>Amounts</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {patterns.map((p, i) => (
+              <tr key={i}>
+                <td style={{ fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title={p.normalized_description}>
+                  {p.normalized_description}
+                </td>
+                <td className="num mono">{p.count}</td>
+                <td style={{ fontSize: 11 }}>
+                  {(p.properties || []).map((prop, j) => (
+                    <span key={j} style={{ display: 'inline-block', marginRight: 4, marginBottom: 2, background: '#FEE2E2', color: '#DC2626', padding: '1px 5px', borderRadius: 2, fontSize: 10, fontWeight: 600 }}>
+                      {prop}
+                    </span>
+                  ))}
+                </td>
+                <td style={{ fontSize: 11 }}>
+                  {(p.categories || []).join(', ')}
+                </td>
+                <td className="mono" style={{ fontSize: 11, color: '#888' }}>
+                  ${Math.abs(parseFloat(p.min_amount)).toLocaleString()}
+                  {p.min_amount !== p.max_amount ? `–$${Math.abs(parseFloat(p.max_amount)).toLocaleString()}` : ''}
+                </td>
+                <td>
+                  <button className="btn-warning" style={{ fontSize: 11, padding: '3px 8px' }} onClick={() => setFixTarget(p)}>
+                    Fix
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </Modal>
   );
 }
 
@@ -99,13 +367,8 @@ function ActivityLog({ activity }) {
       <h2 className="section-title" style={{ marginBottom: 12 }}>Recent Learning Activity</h2>
       <table className="tx-table">
         <colgroup>
-          <col style={{ width: 140 }} />
-          <col style={{ width: 130 }} />
-          <col />
-          <col style={{ width: 70 }} />
-          <col style={{ width: 70 }} />
-          <col style={{ width: 70 }} />
-          <col style={{ width: 70 }} />
+          <col style={{ width: 140 }} /><col style={{ width: 130 }} /><col />
+          <col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} /><col style={{ width: 70 }} />
         </colgroup>
         <thead>
           <tr>
@@ -135,19 +398,12 @@ function ActivityLog({ activity }) {
   );
 }
 
-// Shared colgroup for every prediction table
 function PredColGroup() {
   return (
     <colgroup>
-      <col style={{ width: 80 }} />
-      <col />
-      <col style={{ width: 90 }} />
-      <col style={{ width: 110 }} />
-      <col style={{ width: 150 }} />
-      <col style={{ width: 130 }} />
-      <col style={{ width: 58 }} />
-      <col style={{ width: 170 }} />
-      <col style={{ width: 106 }} />
+      <col style={{ width: 80 }} /><col /><col style={{ width: 90 }} />
+      <col style={{ width: 110 }} /><col style={{ width: 150 }} /><col style={{ width: 130 }} />
+      <col style={{ width: 58 }} /><col style={{ width: 170 }} /><col style={{ width: 120 }} />
     </colgroup>
   );
 }
@@ -156,31 +412,27 @@ function PredTableHead() {
   return (
     <thead>
       <tr>
-        <th>Date</th>
-        <th>Description</th>
-        <th className="num">Amount</th>
-        <th>→ Category</th>
-        <th>→ Property</th>
-        <th>→ Tenant</th>
-        <th>Conf</th>
-        <th>Reasoning</th>
-        <th></th>
+        <th>Date</th><th>Description</th><th className="num">Amount</th>
+        <th>→ Category</th><th>→ Property</th><th>→ Tenant</th>
+        <th>Conf</th><th>Reasoning</th><th></th>
       </tr>
     </thead>
   );
 }
 
 export default function Predictions() {
-  const [predictions, setPredictions] = useState([]);
-  const [properties, setProperties]   = useState([]);
-  const [tenants, setTenants]         = useState([]);
-  const [activity, setActivity]       = useState([]);
-  const [loading, setLoading]         = useState(true);
-  const [running, setRunning]         = useState(false);
-  const [accepting, setAccepting]     = useState(false);
+  const [predictions, setPredictions]   = useState([]);
+  const [properties, setProperties]     = useState([]);
+  const [tenants, setTenants]           = useState([]);
+  const [activity, setActivity]         = useState([]);
+  const [loading, setLoading]           = useState(true);
+  const [running, setRunning]           = useState(false);
+  const [accepting, setAccepting]       = useState(false);
   const [bulkAccepting, setBulkAccepting] = useState(null);
-  const [editModal, setEditModal]     = useState(null);
+  const [editModal, setEditModal]       = useState(null);
+  const [fixModal, setFixModal]         = useState(null);
   const [activePopover, setActivePopover] = useState(null);
+  const [showMisclassified, setShowMisclassified] = useState(false);
   const { toast, showToast } = useToast();
 
   const reload = useCallback(async () => {
@@ -205,10 +457,7 @@ export default function Predictions() {
     try {
       const result = await runPredictions();
       await reload();
-      showToast(
-        `Re-trained and re-predicted: ${result.predicted} transactions updated — ` +
-        `${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED, ${result.counts.LOW} LOW`
-      );
+      showToast(`Re-trained: ${result.predicted} updated — ${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED, ${result.counts.LOW} LOW`);
     } catch { showToast('Prediction failed'); }
     finally { setRunning(false); }
   };
@@ -291,8 +540,11 @@ export default function Predictions() {
       <div className="page-header">
         <h1 className="page-title">Predictions</h1>
         <div style={{ display: 'flex', gap: 8 }}>
+          <button className="btn-secondary" onClick={() => setShowMisclassified(true)}>
+            Fix Misclassified Patterns
+          </button>
           <button className="btn-secondary" onClick={handleRunPredictions} disabled={running}>
-            {running ? 'Running...' : 'Re-train on all current classifications'}
+            {running ? 'Running...' : 'Re-train & Re-predict'}
           </button>
           {highCount > 0 && (
             <button className="btn-primary" onClick={handleAcceptAllHigh} disabled={accepting}>
@@ -317,7 +569,7 @@ export default function Predictions() {
 
       {predictions.length === 0 && (
         <div style={{ textAlign: 'center', color: '#888', padding: '48px 0', borderTop: '1px solid #E5E5E5' }}>
-          No pending predictions. Click "Re-train on all current classifications" to generate predictions.
+          No pending predictions. Click "Re-train &amp; Re-predict" to generate predictions.
         </div>
       )}
 
@@ -339,7 +591,6 @@ export default function Predictions() {
 
               return (
                 <div key={key} style={{ marginBottom: 20 }}>
-                  {/* Group header */}
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     padding: '7px 12px', background: '#F5F5F5',
@@ -363,12 +614,19 @@ export default function Predictions() {
                         <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>· {first.predicted_tenant_name}</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 12 }}>
                       {predFields.length > 0 && (
                         <span style={{ fontSize: 11, color: '#888' }}>
                           Predicting: {predFields.join(' · ')}
                         </span>
                       )}
+                      <button
+                        className="btn-warning"
+                        style={{ fontSize: 11, padding: '3px 10px' }}
+                        onClick={() => setFixModal({ key, items })}
+                      >
+                        Fix Group
+                      </button>
                       {items.length > 1 && (
                         <button
                           className="btn-primary"
@@ -381,7 +639,6 @@ export default function Predictions() {
                     </div>
                   </div>
 
-                  {/* Predictions table */}
                   <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
                     <PredColGroup />
                     {groupIdx === 0 && <PredTableHead />}
@@ -406,18 +663,10 @@ export default function Predictions() {
                               )}
                             </td>
                             <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-                            <td>
-                              <PredCell value={tx.predicted_category} />
-                            </td>
-                            <td>
-                              <PredCell value={txPropDisplay} />
-                            </td>
-                            <td>
-                              <PredCell value={tx.predicted_tenant_name} />
-                            </td>
-                            <td>
-                              <ConfBadge level={tx.prediction_confidence} />
-                            </td>
+                            <td><PredCell value={tx.predicted_category} /></td>
+                            <td><PredCell value={txPropDisplay} /></td>
+                            <td><PredCell value={tx.predicted_tenant_name} /></td>
+                            <td><ConfBadge level={tx.prediction_confidence} /></td>
                             <td className="col-desc" style={{ fontSize: 11, color: '#888' }} title={tx.prediction_reasoning}>
                               {tx.prediction_reasoning}
                             </td>
@@ -430,10 +679,10 @@ export default function Predictions() {
                                   <button
                                     className="btn-edit"
                                     onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
-                                    title="Why this prediction?"
+                                    title="View similar past classifications"
                                   >ⓘ</button>
                                   {activePopover === tx.id && (
-                                    <ExamplesPopover tx={tx} onClose={() => setActivePopover(null)} />
+                                    <SimilarTrainingPopover tx={tx} onClose={() => setActivePopover(null)} />
                                   )}
                                 </div>
                               </div>
@@ -451,12 +700,7 @@ export default function Predictions() {
       })}
 
       {editModal && (
-        <Modal
-          title="Edit Prediction"
-          onClose={() => setEditModal(null)}
-          onSave={handleEditAccept}
-          saveLabel="Accept with Changes"
-        >
+        <Modal title="Edit Prediction" onClose={() => setEditModal(null)} onSave={handleEditAccept} saveLabel="Accept with Changes">
           <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
             <strong>{editModal.tx.display_description || editModal.tx.description}</strong>
             <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(editModal.tx.amount)).toLocaleString()}</span>
@@ -495,6 +739,31 @@ export default function Predictions() {
             </select>
           </div>
         </Modal>
+      )}
+
+      {fixModal && (
+        <BulkFixModal
+          group={fixModal}
+          properties={properties}
+          tenants={tenants}
+          onClose={() => setFixModal(null)}
+          onFixed={(res) => {
+            showToast(`Fixed ${res.predictions_updated} prediction(s)${res.historical_updated > 0 ? ` + ${res.historical_updated} historical` : ''}`);
+            reload();
+          }}
+        />
+      )}
+
+      {showMisclassified && (
+        <MisclassifiedPatternsModal
+          properties={properties}
+          tenants={tenants}
+          onClose={() => setShowMisclassified(false)}
+          onFixed={(res) => {
+            showToast(`Fixed ${res.predictions_updated} prediction(s)${res.historical_updated > 0 ? ` + ${res.historical_updated} historical` : ''}`);
+            reload();
+          }}
+        />
       )}
 
       <ActivityLog activity={activity} />

@@ -45,6 +45,15 @@ export const getTenantAliases  = (id)            => api.get(`/tenants/${id}/alia
 export const addTenantAlias    = (id, alias)      => api.post(`/tenants/${id}/aliases`, { alias }).then(r => r.data);
 export const deleteTenantAlias = (id, aliasId)    => api.delete(`/tenants/${id}/aliases/${aliasId}`).then(r => r.data);
 
+export const getSimilarTraining        = (norm)  => api.get('/predictions/similar-training', { params: { norm } }).then(r => r.data);
+export const getMisclassifiedPatterns  = ()      => api.get('/predictions/misclassified-patterns').then(r => r.data);
+export const bulkFixPredictions        = (data)  => api.post('/predictions/bulk-fix', data).then(r => r.data);
+
+export const getMerchantRules    = ()        => api.get('/merchant-rules').then(r => r.data);
+export const createMerchantRule  = (data)    => api.post('/merchant-rules', data).then(r => r.data);
+export const updateMerchantRule  = (id, data) => api.put(`/merchant-rules/${id}`, data).then(r => r.data);
+export const deleteMerchantRule  = (id)      => api.delete(`/merchant-rules/${id}`).then(r => r.data);
+
 export const syncOneConnection            = (id) => api.post(`/plaid/connections/${id}/sync`).then(r => r.data);
 export const disconnectBank               = (id) => api.delete(`/plaid/connections/${id}/full`).then(r => r.data);
 export const removeConnectionTransactions = (id) => api.delete(`/plaid/connections/${id}/transactions-only`).then(r => r.data);

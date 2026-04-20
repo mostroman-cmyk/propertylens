@@ -270,6 +270,24 @@ function predictFuzzy(norm, candidates) {
   return null;
 }
 
+// ── Explicit pattern-amount rules (HIGHEST priority) ─────────────────────────
+
+function matchPatternAmountRule(tx, norm, txAmt, rules) {
+  for (const rule of rules) {
+    const pat = (rule.merchant_pattern || '').toUpperCase();
+    if (!pat) continue;
+    const haystack = (norm || '').toUpperCase();
+    const rawHaystack = (tx.description || '').toUpperCase();
+    if (!haystack.includes(pat) && !rawHaystack.includes(pat)) continue;
+    if (rule.amount != null) {
+      const tol = parseFloat(rule.amount_tolerance ?? 2);
+      if (Math.abs(txAmt - parseFloat(rule.amount)) > tol) continue;
+    }
+    return rule;
+  }
+  return null;
+}
+
 // ── Payer-name prediction (income transactions with payment-rail sender) ───────
 
 function amountMatchesTolerance(txAmt, storedBucket) {
@@ -565,6 +583,20 @@ async function predictAll() {
     'SELECT id, name, monthly_rent, property_id FROM tenants'
   );
 
+  // Load explicit pattern-amount rules (HIGHEST priority — override all similarity/payer logic)
+  let patternAmountRules = [];
+  try {
+    const { rows: par } = await db.query(`
+      SELECT r.*, p.name AS property_name, t.name AS tenant_name
+      FROM pattern_amount_rules r
+      LEFT JOIN properties p ON r.property_id = p.id
+      LEFT JOIN tenants t ON r.tenant_id = t.id
+      ORDER BY r.amount DESC NULLS LAST
+    `);
+    patternAmountRules = par;
+    if (par.length > 0) console.log(`[predict] Loaded ${par.length} explicit pattern-amount rule(s)`);
+  } catch {} // Table may not exist on first run
+
   // Load confirmed payer patterns (user-validated payer_name → tenant mappings)
   const payerPatternMap = new Map(); // payer_name → [{tenant_id, confirmed_count}]
   try {
@@ -630,11 +662,30 @@ async function predictAll() {
     const norm = tx.normalized_description || normalizeDescription(tx.description);
     const payerName = tx.payer_name || extractSenderName(tx.description);
 
+    const txAmt = Math.abs(parseFloat(tx.amount));
     let pred = null;
+
+    // HIGHEST PRIORITY: explicit merchant-pattern + amount rules
+    if (patternAmountRules.length > 0) {
+      const rule = matchPatternAmountRule(tx, norm, txAmt, patternAmountRules);
+      if (rule) {
+        const propName = rule.property_name || (rule.property_id ? `property ${rule.property_id}` : null);
+        console.log(`[predict] Transaction ${tx.id}: matched explicit rule "${rule.merchant_pattern}"${rule.amount != null ? ` @ $${rule.amount}` : ''} → ${propName || rule.category || '?'}`);
+        pred = {
+          predicted_category:       rule.category || (tx.type === 'income' ? 'Other Income' : 'Other'),
+          predicted_property_id:    rule.property_scope === 'portfolio' ? null : (rule.property_id || null),
+          predicted_property_scope: rule.property_scope === 'portfolio' ? 'portfolio' : null,
+          predicted_tenant_id:      rule.tenant_id || null,
+          prediction_confidence:    'HIGH',
+          prediction_reasoning:     `Explicit rule: "${rule.merchant_pattern}"${rule.amount != null ? ` @ $${rule.amount}` : ''}${propName ? ` → ${propName}` : ''}${rule.note ? ` (${rule.note})` : ''}`,
+          prediction_examples:      null,
+        };
+      }
+    }
 
     // Payer-name matching: for income transactions with a recognized payment-rail sender,
     // match against confirmed payer_patterns and transaction history BEFORE fuzzy similarity.
-    if (tx.type === 'income' && payerName) {
+    if (!pred && tx.type === 'income' && payerName) {
       pred = predictByPayerName(tx.id, tx.amount, payerName, payerPatternMap, payerAmountMap, payerHistoryMap, tenants);
     }
 

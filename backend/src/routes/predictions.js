@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
-const { predictAll } = require('../prediction/engine');
+const { predictAll, jaccardSimilarity } = require('../prediction/engine');
 const { triggerLearnAsync, triggerFullRetrainAsync } = require('../prediction/learner');
 const { learnPattern } = require('../matching/rentMatcher');
 
@@ -158,6 +158,128 @@ router.post('/accept-all-high', async (req, res) => {
     `);
     res.json({ accepted: result.rowCount });
     if (result.rowCount > 0) triggerFullRetrainAsync('accept_all_high');
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Similar past classified transactions for a given normalized description
+router.get('/similar-training', async (req, res) => {
+  const { norm } = req.query;
+  if (!norm) return res.status(400).json({ error: 'norm required' });
+  try {
+    const { rows } = await db.query(`
+      SELECT tx.id, tx.date, tx.description, tx.display_description, tx.amount,
+             tx.category, tx.property_id, tx.tenant_id,
+             tx.normalized_description,
+             p.name AS property_name, t.name AS tenant_name
+      FROM transactions tx
+      LEFT JOIN properties p ON tx.property_id = p.id
+      LEFT JOIN tenants t ON tx.tenant_id = t.id
+      WHERE tx.category NOT IN ('Other', 'Other Income')
+        AND tx.normalized_description IS NOT NULL
+      ORDER BY tx.date DESC
+      LIMIT 500
+    `);
+    const scored = rows
+      .map(r => ({ ...r, similarity: jaccardSimilarity(norm, r.normalized_description || '') }))
+      .filter(r => r.similarity >= 0.50)
+      .sort((a, b) => b.similarity - a.similarity)
+      .slice(0, 10);
+    res.json(scored);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Merchant patterns with inconsistent property/category assignments (for "Fix Misclassified" UI)
+router.get('/misclassified-patterns', async (req, res) => {
+  try {
+    const { rows } = await db.query(`
+      SELECT
+        tx.normalized_description,
+        COUNT(*) AS count,
+        COUNT(DISTINCT COALESCE(tx.property_id::text, 'null')) AS distinct_properties,
+        COUNT(DISTINCT tx.category) AS distinct_categories,
+        array_agg(DISTINCT p.name ORDER BY p.name) FILTER (WHERE p.name IS NOT NULL) AS properties,
+        array_agg(DISTINCT tx.category ORDER BY tx.category) AS categories,
+        MIN(tx.amount::numeric) AS min_amount,
+        MAX(tx.amount::numeric) AS max_amount
+      FROM transactions tx
+      LEFT JOIN properties p ON tx.property_id = p.id
+      WHERE tx.category NOT IN ('Other', 'Other Income')
+        AND tx.normalized_description IS NOT NULL
+        AND tx.normalized_description <> ''
+      GROUP BY tx.normalized_description
+      HAVING (
+        COUNT(DISTINCT COALESCE(tx.property_id::text, 'null')) > 1
+        OR COUNT(DISTINCT tx.category) > 1
+      ) AND COUNT(*) >= 2
+      ORDER BY COUNT(*) DESC
+      LIMIT 50
+    `);
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bulk fix: correct predictions for a group and optionally fix historical misclassifications
+router.post('/bulk-fix', async (req, res) => {
+  const { norm_key, category, property_id, property_scope, tenant_id, fix_historical, amount_filter } = req.body;
+  if (!norm_key) return res.status(400).json({ error: 'norm_key required' });
+
+  const effectivePropId = property_scope === 'portfolio' ? null : (property_id || null);
+  const effectiveScope  = property_scope || 'single';
+
+  try {
+    // Update all pending (unaccepted) predictions with this norm key
+    let predQuery = `
+      UPDATE transactions
+      SET predicted_category=$1, predicted_property_id=$2, predicted_property_scope=$3, predicted_tenant_id=$4
+      WHERE normalized_description=$5
+        AND (prediction_accepted IS NULL OR prediction_accepted = false)
+        AND prediction_confidence IS NOT NULL
+    `;
+    const predParams = [category || null, effectivePropId, effectiveScope, tenant_id || null, norm_key];
+
+    if (amount_filter != null) {
+      predQuery += ` AND ABS(amount::numeric - $6) <= 2`;
+      predParams.push(parseFloat(amount_filter));
+    }
+
+    const { rowCount: predUpdated } = await db.query(predQuery, predParams);
+
+    let histUpdated = 0;
+    if (fix_historical) {
+      let histQuery = `
+        UPDATE transactions
+        SET category=$1, property_id=$2, property_scope=$3, tenant_id=$4
+        WHERE normalized_description=$5
+          AND (prediction_accepted = true OR (category NOT IN ('Other','Other Income')))
+          AND (
+            category IS DISTINCT FROM $1
+            OR property_id IS DISTINCT FROM $2
+            OR tenant_id IS DISTINCT FROM $4
+          )
+      `;
+      const histParams = [category || null, effectivePropId, effectiveScope, tenant_id || null, norm_key];
+
+      if (amount_filter != null) {
+        histQuery += ` AND ABS(amount::numeric - $6) <= 2`;
+        histParams.push(parseFloat(amount_filter));
+      }
+
+      const { rowCount } = await db.query(histQuery, histParams);
+      histUpdated = rowCount;
+    }
+
+    res.json({ predictions_updated: predUpdated, historical_updated: histUpdated });
+
+    // Background re-predict after fixing training data
+    if (histUpdated > 0) {
+      setImmediate(() => predictAll().catch(console.error));
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

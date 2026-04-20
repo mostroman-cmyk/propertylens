@@ -298,6 +298,23 @@ async function migrate() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_payer_patterns_name ON payer_patterns (payer_name)`);
 
+  // Table: explicit merchant-pattern + amount → property/category/tenant (HIGHEST prediction priority)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS pattern_amount_rules (
+      id               SERIAL PRIMARY KEY,
+      merchant_pattern TEXT NOT NULL,
+      amount           NUMERIC(10,2),
+      amount_tolerance NUMERIC(10,2) DEFAULT 2,
+      category         TEXT,
+      property_id      INTEGER REFERENCES properties(id) ON DELETE SET NULL,
+      property_scope   TEXT DEFAULT 'single',
+      tenant_id        INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      note             TEXT,
+      created_at       TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_par_pattern ON pattern_amount_rules (merchant_pattern)`);
+
   // Table: payer_name + amount_bucket → tenant_id (amount-specific prediction)
   await db.query(`
     CREATE TABLE IF NOT EXISTS payer_amount_patterns (
@@ -402,6 +419,25 @@ async function migrate() {
     }
   }
   console.log(`[migrate] Backfilled ${amtPatternLearned} payer_amount_patterns from ${assignedIncomeAmt.length} historical assignments`);
+
+  // DEBUG: Log any mortgage-servicer transactions to surface misclassified training data
+  try {
+    const { rows: jmjRows } = await db.query(`
+      SELECT tx.amount::numeric, tx.category, p.name AS property_name, COUNT(*) AS count
+      FROM transactions tx
+      LEFT JOIN properties p ON tx.property_id = p.id
+      WHERE tx.description ILIKE '%JMJ MTG GROUP%'
+      GROUP BY tx.amount::numeric, tx.category, p.name
+      ORDER BY tx.amount::numeric
+    `);
+    if (jmjRows.length > 0) {
+      const total = jmjRows.reduce((s, r) => s + parseInt(r.count), 0);
+      console.log(`[migrate] JMJ MTG GROUP — ${total} total transactions:`);
+      for (const r of jmjRows) {
+        console.log(`  $${parseFloat(r.amount).toFixed(2)} × ${r.count} → ${r.category || 'uncat'} / ${r.property_name || 'no property'}`);
+      }
+    }
+  } catch {}
 
   console.log('[migrate] Database ready');
 
