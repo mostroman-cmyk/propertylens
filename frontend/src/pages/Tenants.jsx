@@ -123,18 +123,18 @@ export default function Tenants() {
         />
       )}
 
-      {tenants.length > 0 && <table>
+      {tenants.length > 0 && <table className="mobile-cards">
         <thead>
           <tr><th>Name</th><th>Property</th><th>Unit</th><th className="num">Monthly Rent</th><th></th></tr>
         </thead>
         <tbody>
           {tenants.map(t => (
             <tr key={t.id}>
-              <td>{t.name}</td>
-              <td>{t.property_name}</td>
-              <td className="nowrap">{t.unit}</td>
-              <td className="num mono">{formatMoney(t.monthly_rent)}</td>
-              <td className="nowrap">
+              <td data-label="Name">{t.name}</td>
+              <td data-label="Property">{t.property_name}</td>
+              <td data-label="Unit" className="nowrap">{t.unit}</td>
+              <td data-label="Rent" className="num mono">{formatMoney(t.monthly_rent)}</td>
+              <td data-label="">
                 <button className="btn-edit" onClick={() => openEdit(t)}>Edit</button>
               </td>
             </tr>

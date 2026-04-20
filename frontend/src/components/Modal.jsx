@@ -9,10 +9,14 @@ export default function Modal({ title, onClose, onSave, saveLabel = 'Save', savi
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" style={width ? { width } : undefined} onClick={e => e.stopPropagation()}>
+      <div
+        className="modal"
+        style={width ? { maxWidth: width } : undefined}
+        onClick={e => e.stopPropagation()}
+      >
         <div className="modal-header">
           <h2>{title}</h2>
-          <button className="modal-close" onClick={onClose}>&#215;</button>
+          <button className="modal-close" onClick={onClose} style={{ minWidth: 44, minHeight: 44 }}>&#215;</button>
         </div>
         <div className="modal-body">
           {error && <div className="modal-error">{error}</div>}

@@ -361,7 +361,7 @@ export default function Transactions() {
         </div>
       )}
 
-      <table className="tx-table">
+      <table className="tx-table mobile-cards">
         <colgroup>
           <col style={{ width: 100 }} />
           <col />
@@ -397,7 +397,6 @@ export default function Transactions() {
         <tbody>
           {sortRows(filtered, sortCol, sortDir, TX_COL_DEFS).map(tx => {
             const txAmt = parseFloat(tx.amount);
-            // Candidate tenants: exact amount match first, fall back to within 10%
             const exactCandidates = tenants.filter(t => Math.abs(parseFloat(t.monthly_rent) - txAmt) <= 1);
             const reviewCandidates = exactCandidates.length > 0
               ? exactCandidates
@@ -407,28 +406,44 @@ export default function Transactions() {
               <tr
                 key={tx.id}
                 onContextMenu={e => handleContextMenu(e, tx)}
+                onClick={() => openEdit(tx)}
                 style={isReviewTab ? { background: '#FFFBEB' } : undefined}
               >
-                <td className="nowrap mono">{formatDate(tx.date)}</td>
-                <td className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
-                <td className="num mono">{formatMoney(Math.abs(txAmt))}</td>
-                <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-                <td className="nowrap">{tx.category}</td>
-                <td style={{ color: '#666' }}>
+                {/* Mobile card layout: main row (desc + amount) */}
+                <td className="tx-mobile-main hide-desktop" style={{ fontWeight: 600, fontSize: 14 }}>
+                  <span style={{ flex: 1, marginRight: 8 }}>{tx.display_description || tx.description}</span>
+                  <span className="mono" style={{ fontWeight: 700, flexShrink: 0 }}>{formatMoney(Math.abs(txAmt))}</span>
+                </td>
+                {/* Mobile card layout: sub row (date + category) */}
+                <td className="tx-mobile-sub hide-desktop">
+                  <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
+                  {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
+                  {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
+                  <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{tx.type}</span>
+                </td>
+
+                {/* Desktop columns */}
+                <td className="nowrap mono show-desktop">{formatDate(tx.date)}</td>
+                <td className="col-desc show-desktop" title={tx.description}>{tx.display_description || tx.description}</td>
+                <td className="num mono show-desktop">{formatMoney(Math.abs(txAmt))}</td>
+                <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                <td className="nowrap show-desktop">{tx.category}</td>
+                <td style={{ color: '#666' }} className="show-desktop">
                   {tx.property_scope === 'portfolio'
                     ? <span style={{ fontStyle: 'italic', fontVariant: 'small-caps', fontWeight: 600, fontSize: 11, color: '#444' }}>🏘 All Properties</span>
                     : (tx.property_name || '—')
                   }
                 </td>
-                <td className="nowrap"><MatchStatus tx={tx} onAssign={openAssign} /></td>
+                <td className="nowrap show-desktop"><MatchStatus tx={tx} onAssign={openAssign} /></td>
                 {isReviewTab && (
-                  <td style={{ padding: '4px 8px' }}>
+                  <td style={{ padding: '4px 8px' }} className="show-desktop">
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
                       <select
                         className="form-input"
                         style={{ height: 26, padding: '0 4px', fontSize: 12, flex: 1 }}
                         value={reviewSelections[tx.id] || ''}
                         onChange={e => setReviewSelections(s => ({ ...s, [tx.id]: e.target.value }))}
+                        onClick={e => e.stopPropagation()}
                       >
                         <option value="">— Select tenant —</option>
                         {reviewCandidates.map(t => {
@@ -454,14 +469,14 @@ export default function Transactions() {
                         className="btn-secondary"
                         style={{ whiteSpace: 'nowrap', fontSize: 12, padding: '2px 8px', height: 26 }}
                         disabled={!reviewSelections[tx.id] || reviewSaving[tx.id]}
-                        onClick={() => handleQuickAssign(tx)}
+                        onClick={e => { e.stopPropagation(); handleQuickAssign(tx); }}
                       >
                         {reviewSaving[tx.id] ? '…' : '✓ Assign & Learn'}
                       </button>
                     </div>
                   </td>
                 )}
-                <td className="nowrap" style={{ fontSize: 11 }}>
+                <td className="nowrap show-desktop" style={{ fontSize: 11 }}>
                   {tx.type === 'income' && tx.tenant_id ? (
                     editingCell?.txId === tx.id && editingCell?.field === 'rent_month' ? (
                       <select
@@ -471,12 +486,13 @@ export default function Transactions() {
                         value={tx.rent_month || ''}
                         onChange={e => { handleRentMonthEdit(tx, e.target.value); setEditingCell(null); }}
                         onBlur={() => setEditingCell(null)}
+                        onClick={e => e.stopPropagation()}
                       >
                         {RENT_MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
                       </select>
                     ) : (
                       <span
-                        onClick={() => setEditingCell({ txId: tx.id, field: 'rent_month' })}
+                        onClick={e => { e.stopPropagation(); setEditingCell({ txId: tx.id, field: 'rent_month' }); }}
                         style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3 }}
                         title="Click to change rent month"
                       >
@@ -486,7 +502,7 @@ export default function Transactions() {
                     )
                   ) : <span style={{ color: '#ccc' }}>—</span>}
                 </td>
-                <td className="nowrap">
+                <td className="nowrap show-desktop" onClick={e => e.stopPropagation()}>
                   <button className="btn-edit" onClick={() => openEdit(tx)}>Edit</button>
                 </td>
               </tr>

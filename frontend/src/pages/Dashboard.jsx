@@ -473,7 +473,7 @@ export default function Dashboard() {
             )}
           </div>
           <div style={{ overflowX: 'auto' }}>
-            <table style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
+            <table className="mobile-cards tx-table" style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
               <colgroup>
                 <col style={{ width: 100 }} /><col /><col style={{ width: 110 }} />
                 <col style={{ width: 75 }} /><col style={{ width: 120 }} />
@@ -488,19 +488,31 @@ export default function Dashboard() {
               <tbody>
                 {transactions.slice(0, 50).map((tx) => (
                   <tr key={tx.id}>
-                    <td className="nowrap mono" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
-                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
+                    {/* Mobile card layout */}
+                    <td className="tx-mobile-main hide-desktop" style={{ fontWeight: 600, fontSize: 14 }}>
+                      <span style={{ flex: 1, marginRight: 8 }}>{tx.display_description || tx.description}</span>
+                      <span className="mono" style={{ fontWeight: 700, flexShrink: 0 }}>{formatMoney(Math.abs(parseFloat(tx.amount)))}</span>
+                    </td>
+                    <td className="tx-mobile-sub hide-desktop">
+                      <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
+                      {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
+                      {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
+                      <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{tx.type}</span>
+                    </td>
+                    {/* Desktop columns */}
+                    <td className="nowrap mono show-desktop" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
+                    <td className="show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
                       {tx.display_description || tx.description}
                     </td>
-                    <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                    <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
-                    <td className="nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
-                    <td style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                    <td className="num mono show-desktop">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
+                    <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                    <td className="nowrap show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
+                    <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                       {tx.property_scope === 'portfolio'
                         ? <span style={{ fontStyle: 'italic', fontWeight: 600, fontVariant: 'small-caps' }}>All</span>
                         : (tx.property_name || '—')}
                     </td>
-                    <td style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                    <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                       {tx.tenant_name || '—'}
                     </td>
                   </tr>
@@ -532,7 +544,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Rent Status ── */}
-        <div style={{ flexShrink: 0, width: 380 }}>
+        <div style={{ flexShrink: 0, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
             <select
@@ -545,7 +557,7 @@ export default function Dashboard() {
             </select>
           </div>
 
-          <table style={{ tableLayout: 'fixed', width: '100%' }}>
+          <table className="mobile-cards" style={{ tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
               <col /><col style={{ width: 78 }} /><col style={{ width: 62 }} /><col style={{ width: 90 }} />
             </colgroup>
@@ -560,17 +572,17 @@ export default function Dashboard() {
             <tbody>
               {tenants.length > 0 && (
                 <tr style={{ background: '#F9F9F9', fontWeight: 600 }}>
-                  <td colSpan={2} style={{ fontSize: 12, paddingTop: 6, paddingBottom: 6 }}>
+                  <td data-label="" colSpan={2} style={{ fontSize: 12, paddingTop: 6, paddingBottom: 6 }}>
                     {paidCount} / {tenants.length} PAID
                   </td>
-                  <td colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
+                  <td data-label="" colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
                     {formatMoney(collectedForMonth)} of {formatMoney(totalMonthlyRent, { noCents: true })} ({paidPct}%)
                   </td>
                 </tr>
               )}
               {rentStatus.map(({ tenant, paid, paidDate, shortfall }) => (
                 <tr key={tenant.id}>
-                  <td>
+                  <td data-label="Tenant">
                     <a
                       href={`/transactions?tenant_id=${tenant.id}`}
                       style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted #ccc' }}
@@ -579,13 +591,13 @@ export default function Dashboard() {
                       {tenant.name}
                     </a>
                   </td>
-                  <td className="num mono" style={{ fontSize: 12 }}>
+                  <td data-label="Rent" className="num mono" style={{ fontSize: 12 }}>
                     {formatMoney(tenant.monthly_rent, { noCents: true })}
                   </td>
-                  <td className="nowrap" style={{ fontSize: 12, color: '#666' }}>
+                  <td data-label="Paid" className="nowrap" style={{ fontSize: 12, color: '#666' }}>
                     {paid ? formatDate(paidDate) : '—'}
                   </td>
-                  <td className="nowrap">
+                  <td data-label="Status" className="nowrap">
                     {!paid ? (
                       <span className="status-unpaid">● DUE</span>
                     ) : shortfall > 0 ? (

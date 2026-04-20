@@ -226,7 +226,7 @@ export default function ReviewClassifications() {
         </div>
       )}
 
-      <table className="tx-table">
+      <table className="tx-table mobile-cards">
         <colgroup>
           <col style={{ width: 28 }} />
           <col style={{ width: 90 }} />
@@ -269,27 +269,27 @@ export default function ReviewClassifications() {
             const isUncategorized = ['Other', 'Other Income'].includes(tx.category);
             return (
               <tr key={tx.id} style={{ background: selectedIds.has(tx.id) ? '#F5F5F5' : undefined }}>
-                <td>
+                <td data-label="">
                   <input
                     type="checkbox"
                     checked={selectedIds.has(tx.id)}
                     onChange={() => toggleSelect(tx.id)}
-                    style={{ accentColor: '#000' }}
+                    style={{ accentColor: '#000', width: 18, height: 18 }}
                   />
                 </td>
-                <td className="nowrap mono" style={{ fontSize: 11 }}>
+                <td data-label="Date" className="nowrap mono" style={{ fontSize: 11 }}>
                   {formatDate(tx.date)}
                 </td>
-                <td className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
-                <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                <td data-label="Description" className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
+                <td data-label="Amount" className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
+                <td data-label="Type" className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
 
-                <td className="nowrap">
+                <td data-label="Category" className="nowrap">
                   {editingCell?.txId === tx.id && editingCell?.field === 'category' ? (
                     <select
                       autoFocus
                       className="form-input"
-                      style={{ height: 24, padding: '0 4px', fontSize: 12 }}
+                      style={{ height: 36, padding: '0 4px', fontSize: 16 }}
                       value={tx.category}
                       onChange={e => handleInlineEdit(tx, 'category', e.target.value)}
                       onBlur={() => setEditingCell(null)}
@@ -307,12 +307,12 @@ export default function ReviewClassifications() {
                   )}
                 </td>
 
-                <td className="nowrap">
+                <td data-label="Property" className="nowrap">
                   {editingCell?.txId === tx.id && editingCell?.field === 'property_id' ? (
                     <select
                       autoFocus
                       className="form-input"
-                      style={{ height: 24, padding: '0 4px', fontSize: 12 }}
+                      style={{ height: 36, padding: '0 4px', fontSize: 16 }}
                       value={tx.property_scope === 'portfolio' ? 'portfolio' : (tx.property_id ? String(tx.property_id) : '')}
                       onChange={e => handleInlineEdit(tx, 'property_id', e.target.value)}
                       onBlur={() => setEditingCell(null)}
@@ -335,12 +335,12 @@ export default function ReviewClassifications() {
                   )}
                 </td>
 
-                <td className="nowrap">
+                <td data-label="Tenant" className="nowrap">
                   {editingCell?.txId === tx.id && editingCell?.field === 'tenant_id' ? (
                     <select
                       autoFocus
                       className="form-input"
-                      style={{ height: 24, padding: '0 4px', fontSize: 12 }}
+                      style={{ height: 36, padding: '0 4px', fontSize: 16 }}
                       value={tx.tenant_id || ''}
                       onChange={e => handleInlineEdit(tx, 'tenant_id', e.target.value)}
                       onBlur={() => setEditingCell(null)}
@@ -359,7 +359,7 @@ export default function ReviewClassifications() {
                   )}
                 </td>
 
-                <td className="nowrap">
+                <td data-label="">
                   <button
                     className="btn-edit"
                     onClick={() => setSimilarFilter(extractMerchant(tx.description))}

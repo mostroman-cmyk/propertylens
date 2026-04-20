@@ -100,16 +100,16 @@ export default function Properties() {
                 <button className="btn-edit" onClick={() => openEdit(prop)}>Edit</button>
               </div>
             </div>
-            <table>
+            <table className="mobile-cards">
               <thead>
                 <tr><th>Unit</th><th>Tenant</th><th className="num">Monthly Rent</th></tr>
               </thead>
               <tbody>
                 {propTenants.map(t => (
                   <tr key={t.id}>
-                    <td className="nowrap">{t.unit}</td>
-                    <td>{t.name}</td>
-                    <td className="num mono">{formatMoney(t.monthly_rent)}</td>
+                    <td data-label="Unit" className="nowrap">{t.unit}</td>
+                    <td data-label="Tenant">{t.name}</td>
+                    <td data-label="Rent" className="num mono">{formatMoney(t.monthly_rent)}</td>
                   </tr>
                 ))}
                 {propTenants.length === 0 && (

@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { BrowserRouter, Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { formatDate } from './utils/format';
 import Dashboard from './pages/Dashboard';
@@ -14,32 +15,94 @@ import Settings from './pages/Settings';
 import Login from './pages/Login';
 import './App.css';
 
-function TopBar() {
+const NAV_LINKS = [
+  { to: '/',                    label: 'Dashboard',     end: true },
+  { to: '/properties',          label: 'Properties' },
+  { to: '/tenants',             label: 'Tenants' },
+  { to: '/transactions',        label: 'Transactions' },
+  { to: '/categorization-rules',label: 'Rules' },
+  { to: '/merchant-rules',      label: 'Merchant Rules' },
+  { to: '/review',              label: 'Review' },
+  { to: '/predictions',         label: 'Predictions' },
+  { to: '/reports',             label: 'Reports' },
+  { to: '/settings',            label: 'Settings' },
+];
+
+function TopBar({ onMenuToggle }) {
   const dateStr = formatDate(new Date(), 'header');
   return (
-    <div className="topbar">
-      <span className="topbar-brand">PROPERTYLENS</span>
-      <span className="topbar-meta">{dateStr}</span>
+    <header className="topbar">
+      <div className="topbar-left">
+        <button className="hamburger" onClick={onMenuToggle} aria-label="Open navigation menu">
+          <span /><span /><span />
+        </button>
+        <span className="topbar-brand">PROPERTYLENS</span>
+      </div>
+      <span className="topbar-meta topbar-date">{dateStr}</span>
+    </header>
+  );
+}
+
+function MobileNav({ open, onClose }) {
+  // Close on route change
+  const location = useLocation();
+  useEffect(() => { onClose(); }, [location.pathname, onClose]);
+
+  // Swipe to close
+  useEffect(() => {
+    if (!open) return;
+    let startX = null;
+    const onTouchStart = (e) => { startX = e.touches[0].clientX; };
+    const onTouchEnd = (e) => {
+      if (startX === null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      if (dx < -50) onClose();
+      startX = null;
+    };
+    document.addEventListener('touchstart', onTouchStart, { passive: true });
+    document.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      document.removeEventListener('touchstart', onTouchStart);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [open, onClose]);
+
+  // Prevent body scroll when open
+  useEffect(() => {
+    if (open) document.body.style.overflow = 'hidden';
+    else document.body.style.overflow = '';
+    return () => { document.body.style.overflow = ''; };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <div className="mobile-nav-overlay" onClick={onClose}>
+      <nav className="mobile-nav" onClick={e => e.stopPropagation()}>
+        <div className="mobile-nav-header">
+          <span className="topbar-brand">PROPERTYLENS</span>
+          <button className="mobile-nav-close" onClick={onClose} aria-label="Close menu">&#215;</button>
+        </div>
+        {NAV_LINKS.map(({ to, label, end }) => (
+          <NavLink key={to} to={to} end={end}>{label}</NavLink>
+        ))}
+      </nav>
     </div>
   );
 }
 
 function AuthenticatedApp() {
+  const [navOpen, setNavOpen] = useState(false);
+
   return (
     <div className="app">
-      <TopBar />
+      <TopBar onMenuToggle={() => setNavOpen(o => !o)} />
       <nav className="sidebar">
-        <NavLink to="/" end>Dashboard</NavLink>
-        <NavLink to="/properties">Properties</NavLink>
-        <NavLink to="/tenants">Tenants</NavLink>
-        <NavLink to="/transactions">Transactions</NavLink>
-        <NavLink to="/categorization-rules">Rules</NavLink>
-        <NavLink to="/merchant-rules">Merchant Rules</NavLink>
-        <NavLink to="/review">Review</NavLink>
-        <NavLink to="/predictions">Predictions</NavLink>
-        <NavLink to="/reports">Reports</NavLink>
-        <NavLink to="/settings">Settings</NavLink>
+        {NAV_LINKS.map(({ to, label, end }) => (
+          <NavLink key={to} to={to} end={end}>{label}</NavLink>
+        ))}
       </nav>
+      <MobileNav open={navOpen} onClose={() => setNavOpen(false)} />
       <main className="content">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -52,7 +115,6 @@ function AuthenticatedApp() {
           <Route path="/predictions" element={<Predictions />} />
           <Route path="/reports" element={<Reports />} />
           <Route path="/settings" element={<Settings />} />
-          {/* Catch-all: stay on whatever route was requested */}
           <Route path="*" element={<Dashboard />} />
         </Routes>
       </main>

@@ -126,7 +126,7 @@ export default function CategorizationRules() {
         </button>
       </div>
 
-      <table>
+      <table className="mobile-cards">
         <thead>
           <tr>
             <th>Keyword</th>
@@ -140,14 +140,14 @@ export default function CategorizationRules() {
         <tbody>
           {rules.map(rule => (
             <tr key={rule.id}>
-              <td><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85rem' }}>{rule.keyword}</code></td>
-              <td>{rule.category}</td>
-              <td><span className={`badge ${rule.type}`}>{rule.type}</span></td>
-              <td style={{ fontSize: 11, color: rule.property_scope === 'portfolio' ? '#444' : '#aaa' }}>
+              <td data-label="Keyword"><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85rem' }}>{rule.keyword}</code></td>
+              <td data-label="Category">{rule.category}</td>
+              <td data-label="Type"><span className={`badge ${rule.type}`}>{rule.type}</span></td>
+              <td data-label="Scope" style={{ fontSize: 11, color: rule.property_scope === 'portfolio' ? '#444' : '#aaa' }}>
                 {rule.property_scope === 'portfolio' ? '🏘 Portfolio' : 'Single'}
               </td>
-              <td style={{ color: '#888' }}>{rule.priority}</td>
-              <td style={{ width: 70 }}>
+              <td data-label="Priority" style={{ color: '#888' }}>{rule.priority}</td>
+              <td data-label="">
                 <button className="btn-danger" onClick={() => handleDelete(rule.id)}>Delete</button>
               </td>
             </tr>

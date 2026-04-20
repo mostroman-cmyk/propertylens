@@ -83,7 +83,7 @@ export default function Reports() {
           primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
         />
       ) : (
-        <table className="tx-table" style={{ tableLayout: 'auto' }}>
+        <table className="tx-table mobile-cards" style={{ tableLayout: 'auto' }}>
           <thead>
             <tr>
               <th>Property</th>
@@ -97,16 +97,16 @@ export default function Reports() {
           <tbody>
             {properties.map(p => (
               <tr key={p.id}>
-                <td style={{ fontWeight: 600 }}>{p.name}</td>
-                <td className="num mono">{formatMoney(p.income)}</td>
-                <td className="num mono" style={{ color: '#666' }}>{formatMoney(p.specific_expenses)}</td>
+                <td data-label="Property" style={{ fontWeight: 600 }}>{p.name}</td>
+                <td data-label="Income" className="num mono">{formatMoney(p.income)}</td>
+                <td data-label="Expenses" className="num mono" style={{ color: '#666' }}>{formatMoney(p.specific_expenses)}</td>
                 {allocation_method !== 'unallocated' && (
-                  <td className="num mono" style={{ color: '#888', fontStyle: 'italic' }}>
+                  <td data-label="Portfolio" className="num mono" style={{ color: '#888', fontStyle: 'italic' }}>
                     {formatMoney(p.portfolio_allocated)}
                   </td>
                 )}
-                <td className={`num mono${p.net < 0 ? ' negative' : ''}`}>{formatMoney(p.net)}</td>
-                <td style={{ color: '#888' }}>{p.tenant_count}</td>
+                <td data-label="Net" className={`num mono${p.net < 0 ? ' negative' : ''}`}>{formatMoney(p.net)}</td>
+                <td data-label="Tenants" style={{ color: '#888' }}>{p.tenant_count}</td>
               </tr>
             ))}
           </tbody>
@@ -130,6 +130,23 @@ export default function Reports() {
             )}
           </tfoot>
         </table>
+        {/* Mobile totals (tfoot is hidden in mobile-cards) */}
+        <div className="show-mobile" style={{ marginTop: 12, padding: '14px', border: '2px solid #000', borderRadius: 4, fontWeight: 700 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span>Total Income</span><span className="mono">{formatMoney(totalIncome)}</span>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span>Property Expenses</span><span className="mono" style={{ color: '#666' }}>{formatMoney(totalSpecific)}</span>
+          </div>
+          {allocation_method !== 'unallocated' && (
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span>Portfolio Expenses</span><span className="mono" style={{ color: '#888' }}>{formatMoney(portfolio_expenses)}</span>
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #000', paddingTop: 8, marginTop: 4 }}>
+            <span>Net</span><span className={`mono${totalNet < 0 ? ' negative' : ''}`}>{formatMoney(totalNet)}</span>
+          </div>
+        </div>
       )}
     </div>
   );

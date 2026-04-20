@@ -664,12 +664,13 @@ export default function Predictions() {
               return (
                 <div key={key} style={{ marginBottom: 20 }}>
                   <div style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
+                    flexWrap: 'wrap', gap: 8,
                     padding: '7px 12px', background: '#F5F5F5',
                     border: '1px solid #E5E5E5', borderBottom: 'none',
                     borderRadius: '2px 2px 0 0',
                   }}>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, flex: '1 1 200px', overflow: 'hidden' }}>
                       {first.predicted_category && (
                         <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
                           {first.predicted_category}
@@ -686,7 +687,7 @@ export default function Predictions() {
                         <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>· {first.predicted_tenant_name}</span>
                       )}
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, marginLeft: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0, flexWrap: 'wrap' }}>
                       {predFields.length > 0 && (
                         <span style={{ fontSize: 11, color: '#888' }}>
                           Predicting: {predFields.join(' · ')}
@@ -711,7 +712,7 @@ export default function Predictions() {
                     </div>
                   </div>
 
-                  <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
+                  <table className="tx-table mobile-cards" style={{ marginBottom: 0, borderTop: 'none' }}>
                     <PredColGroup />
                     {groupIdx === 0 && <PredTableHead />}
                     <tbody>
@@ -723,10 +724,10 @@ export default function Predictions() {
 
                         return (
                           <tr key={tx.id} style={{ height: 36 }}>
-                            <td className="nowrap mono" style={{ fontSize: 11 }}>
+                            <td data-label="Date" className="nowrap mono" style={{ fontSize: 11 }}>
                               {formatDate(tx.date)}
                             </td>
-                            <td className="col-desc" title={tx.description} style={{ color: '#555' }}>
+                            <td data-label="Description" className="col-desc" title={tx.description} style={{ color: '#555' }}>
                               {txDisp}
                               {tx.payer_name && (
                                 <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', background: '#F0F0F0', color: '#555', padding: '1px 5px', borderRadius: 2, whiteSpace: 'nowrap', fontFamily: 'IBM Plex Mono, monospace' }}>
@@ -734,24 +735,25 @@ export default function Predictions() {
                                 </span>
                               )}
                             </td>
-                            <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                            <td><PredCell value={tx.predicted_category} /></td>
-                            <td><PredCell value={txPropDisplay} /></td>
-                            <td><PredCell value={tx.predicted_tenant_name} /></td>
-                            <td><ConfBadge level={tx.prediction_confidence} /></td>
-                            <td className="col-desc" style={{ fontSize: 11, color: '#888' }} title={tx.prediction_reasoning}>
+                            <td data-label="Amount" className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
+                            <td data-label="→ Category"><PredCell value={tx.predicted_category} /></td>
+                            <td data-label="→ Property"><PredCell value={txPropDisplay} /></td>
+                            <td data-label="→ Tenant"><PredCell value={tx.predicted_tenant_name} /></td>
+                            <td data-label="Conf"><ConfBadge level={tx.prediction_confidence} /></td>
+                            <td data-label="Why" className="col-desc" style={{ fontSize: 11, color: '#888' }} title={tx.prediction_reasoning}>
                               {tx.prediction_reasoning}
                             </td>
-                            <td className="nowrap">
+                            <td data-label="">
                               <div style={{ display: 'flex', gap: 4, position: 'relative' }}>
-                                <button className="btn-edit btn-accept" onClick={() => handleAccept(tx)} title="Accept">✓</button>
-                                <button className="btn-edit btn-reject" onClick={() => handleReject(tx)} title="Reject">✗</button>
-                                <button className="btn-edit" onClick={() => openEdit(tx)} title="Edit then accept">✎</button>
+                                <button className="btn-edit btn-accept" onClick={() => handleAccept(tx)} title="Accept" style={{ minHeight: 36 }}>✓</button>
+                                <button className="btn-edit btn-reject" onClick={() => handleReject(tx)} title="Reject" style={{ minHeight: 36 }}>✗</button>
+                                <button className="btn-edit" onClick={() => openEdit(tx)} title="Edit then accept" style={{ minHeight: 36 }}>✎</button>
                                 <div style={{ position: 'relative' }}>
                                   <button
                                     className="btn-edit"
                                     onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
                                     title="View similar past classifications"
+                                    style={{ minHeight: 36 }}
                                   >ⓘ</button>
                                   {activePopover === tx.id && (
                                     <SimilarTrainingPopover tx={tx} onClose={() => setActivePopover(null)} />

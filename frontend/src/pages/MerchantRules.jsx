@@ -222,7 +222,7 @@ export default function MerchantRules() {
         />
       </div>
 
-      <table className="tx-table">
+      <table className="tx-table mobile-cards">
         <colgroup>
           <col style={{ width: 180 }} />
           <col style={{ width: 100 }} />
@@ -248,26 +248,26 @@ export default function MerchantRules() {
         <tbody>
           {rules.map(rule => (
             <tr key={rule.id}>
-              <td>
+              <td data-label="Keyword">
                 <code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 2, fontSize: 12, fontFamily: 'IBM Plex Mono, monospace' }}>
                   {rule.merchant_pattern}
                 </code>
               </td>
-              <td className="num mono" style={{ fontSize: 12 }}>
+              <td data-label="Amount" className="num mono" style={{ fontSize: 12 }}>
                 {rule.amount != null ? formatMoney(rule.amount) : <span style={{ color: '#bbb' }}>any</span>}
               </td>
-              <td className="num mono" style={{ fontSize: 11, color: '#888' }}>
+              <td data-label="± Tol" className="num mono" style={{ fontSize: 11, color: '#888' }}>
                 ±${parseFloat(rule.amount_tolerance || 2).toFixed(0)}
               </td>
-              <td style={{ fontSize: 12 }}>{rule.category || <span style={{ color: '#bbb' }}>—</span>}</td>
-              <td style={{ fontSize: 12 }}>
+              <td data-label="Category" style={{ fontSize: 12 }}>{rule.category || <span style={{ color: '#bbb' }}>—</span>}</td>
+              <td data-label="Property" style={{ fontSize: 12 }}>
                 {rule.property_scope === 'portfolio'
                   ? '🏘 All Properties'
                   : (rule.property_name || <span style={{ color: '#bbb' }}>—</span>)}
               </td>
-              <td style={{ fontSize: 12 }}>{rule.tenant_name || <span style={{ color: '#bbb' }}>—</span>}</td>
-              <td style={{ fontSize: 11, color: '#888' }}>{rule.note || ''}</td>
-              <td>
+              <td data-label="Tenant" style={{ fontSize: 12 }}>{rule.tenant_name || <span style={{ color: '#bbb' }}>—</span>}</td>
+              <td data-label="Note" style={{ fontSize: 11, color: '#888' }}>{rule.note || ''}</td>
+              <td data-label="">
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button className="btn-edit" onClick={() => openEdit(rule)} title="Edit">✎</button>
                   <button className="btn-danger" onClick={() => handleDelete(rule.id)} title="Delete">✕</button>
