@@ -39,10 +39,13 @@ function currentMonthKey() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 }
 
+function toYM(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 function getDateRange(filterKey, customStart, customEnd) {
   const now = new Date();
   const today = toYMD(now);
-
   switch (filterKey) {
     case '7d': {
       const s = new Date(now); s.setDate(s.getDate() - 6);
@@ -78,34 +81,20 @@ function getDateRange(filterKey, customStart, customEnd) {
   }
 }
 
-// Returns how many months of rent to expect for the given filter (null = indeterminate)
-function getExpectedMonths(filterKey) {
-  const now = new Date();
-  switch (filterKey) {
-    case '7d':        return 1;
-    case 'this_month':return 1;
-    case 'last_month':return 1;
-    case '3m':        return 3;
-    case '6m':        return 6;
-    case 'ytd':       return now.getMonth() + 1; // Jan=1 … Dec=12
-    case '1y':        return 12;
-    default:          return null; // 'all', 'custom' — indeterminate
-  }
-}
-
-// For 'custom', count distinct calendar months in range
-function countMonthsInRange(startDate, endDate) {
-  if (!startDate || !endDate) return null;
+// Returns list of YYYY-MM strings covered by the filter range.
+// Returns null for 'all' (indeterminate). Uses startDate/endDate already computed.
+function getMonthsInRange(startDate, endDate) {
+  if (!startDate) return null;
+  const months = [];
   const s = new Date(startDate + 'T12:00:00');
-  const e = new Date(endDate + 'T12:00:00');
-  let count = 0;
+  const e = endDate ? new Date(endDate + 'T12:00:00') : new Date();
   let d = new Date(s.getFullYear(), s.getMonth(), 1);
   const endMonth = new Date(e.getFullYear(), e.getMonth(), 1);
   while (d <= endMonth) {
-    count++;
+    months.push(toYM(d));
     d = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   }
-  return count;
+  return months.length > 0 ? months : null;
 }
 
 function fmtDate(dateStr) {
@@ -124,16 +113,49 @@ function RangeLabel({ filterKey, startDate, endDate }) {
   if (filterKey === 'all' || (!startDate && !endDate)) {
     return <div className="date-filter-label">Showing: All time</div>;
   }
-  const start = startDate ? fmtDateFull(startDate) : '—';
-  const end = endDate ? fmtDateFull(endDate) : '—';
-  return <div className="date-filter-label">Showing: {start} – {end}</div>;
+  return (
+    <div className="date-filter-label">
+      Showing: {fmtDateFull(startDate)} – {fmtDateFull(endDate)}
+    </div>
+  );
+}
+
+// Tooltip for the Outstanding KPI — shows tenant breakdown
+function OutstandingTooltip({ breakdown, filterRentMonths, tenantCount }) {
+  const unpaidCount = breakdown.length;
+  const paidCount = filterRentMonths
+    ? filterRentMonths.length * tenantCount - unpaidCount
+    : tenantCount - unpaidCount;
+
+  const monthLabel = filterRentMonths && filterRentMonths.length === 1
+    ? filterRentMonths[0]
+    : filterRentMonths ? `${filterRentMonths.length} months` : '';
+
+  return (
+    <div style={{
+      position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%', transform: 'translateX(-50%)',
+      background: '#111', color: '#fff', borderRadius: 4, padding: '10px 14px',
+      fontSize: 12, whiteSpace: 'nowrap', zIndex: 100, minWidth: 220,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.25)',
+    }}>
+      <div style={{ fontWeight: 600, marginBottom: 6, color: '#aaa', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Outstanding {monthLabel && `· ${monthLabel}`}
+      </div>
+      <div style={{ marginBottom: unpaidCount > 0 ? 8 : 0, color: unpaidCount === 0 ? '#4ADE80' : '#fff' }}>
+        {tenantCount} tenants · {paidCount >= 0 ? paidCount : '?'} paid · {unpaidCount} unpaid
+      </div>
+      {breakdown.map((b, i) => (
+        <div key={i} style={{ color: '#F87171', fontSize: 11, paddingLeft: 8 }}>
+          {b.name}{filterRentMonths?.length > 1 ? ` (${b.month})` : ''} — ${b.rent.toLocaleString()}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function Dashboard() {
   const [tenants, setTenants] = useState([]);
-  // date-filtered: drives KPI row + Recent Transactions table
   const [transactions, setTransactions] = useState([]);
-  // unfiltered: drives Rent Status panel + unmatched banner (independent of date filter)
   const [allTransactions, setAllTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
@@ -142,10 +164,10 @@ export default function Dashboard() {
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
-
   const [dateFilter, setDateFilter] = useState('this_month');
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
+  const [showOutstandingTooltip, setShowOutstandingTooltip] = useState(false);
 
   const { startDate, endDate } = getDateRange(dateFilter, customStart, customEnd);
 
@@ -162,7 +184,6 @@ export default function Dashboard() {
   const fetchAll = useCallback(() =>
     getTransactions().then(setAllTransactions), []);
 
-  // Re-fetch filtered when date range changes
   useEffect(() => {
     const params = {};
     if (startDate) params.startDate = startDate;
@@ -170,7 +191,6 @@ export default function Dashboard() {
     fetchFiltered(params);
   }, [startDate, endDate, fetchFiltered]);
 
-  // Fetch tenants + full transaction set once on mount
   useEffect(() => {
     Promise.all([getTenants(), getTransactions()])
       .then(([t, tx]) => { setTenants(t); setAllTransactions(tx); })
@@ -242,44 +262,88 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
-  // ── KPI calculations (date-filtered transactions) ──
-  const rentDeposits = transactions.filter(tx => tx.type === 'income' && tx.category === 'rent');
-  const collected    = rentDeposits.reduce((s, tx) => s + parseFloat(tx.amount), 0);
-  const income       = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-  const expenses     = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
-  const netIncome    = income - expenses;
+  // ── Filter rent months (for rent_month-based KPIs) ─────────────────────────
+  // Returns null for 'all' (indeterminate), array of YYYY-MM for everything else
+  const filterRentMonths = getMonthsInRange(startDate, endDate);
 
+  // ── KPI calculations ────────────────────────────────────────────────────────
+  // COLLECTED: sum of rent payments matched by rent_month within filter period
+  // Falls back to date-based for 'all' (where filterRentMonths is null)
+  const collectedByRM = filterRentMonths
+    ? allTransactions
+        .filter(tx => tx.type === 'income' && tx.tenant_id && filterRentMonths.includes(tx.rent_month))
+        .reduce((s, tx) => s + parseFloat(tx.amount), 0)
+    : null;
+
+  // Date-based fallback for 'all' filter
+  const collectedDateBased = transactions
+    .filter(tx => tx.type === 'income' && tx.category === 'rent')
+    .reduce((s, tx) => s + parseFloat(tx.amount), 0);
+
+  const collected = collectedByRM ?? collectedDateBased;
+
+  // OUTSTANDING: tenant-status-based — a tenant is outstanding only if NO rent payment
+  // exists for their rent_month in the filter period. Never penalizes small shortfalls.
+  const outstandingBreakdown = []; // [{name, rent, month}]
+  let outstandingByRM = null;
+
+  if (filterRentMonths) {
+    outstandingByRM = 0;
+    for (const rm of filterRentMonths) {
+      for (const tenant of tenants) {
+        const hasPaid = allTransactions.some(tx =>
+          tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === rm
+        );
+        if (!hasPaid) {
+          outstandingByRM += parseFloat(tenant.monthly_rent);
+          outstandingBreakdown.push({ name: tenant.name, rent: parseFloat(tenant.monthly_rent), month: rm });
+        }
+      }
+    }
+  }
+
+  // Expected total rent (for display in COLLECTED label)
   const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
-  const expectedMonths   = dateFilter === 'custom'
-    ? countMonthsInRange(startDate, endDate)
-    : getExpectedMonths(dateFilter);
-  const expectedRent  = expectedMonths !== null ? expectedMonths * totalMonthlyRent : null;
-  const outstanding   = expectedRent !== null ? Math.max(0, expectedRent - collected) : null;
+  const expectedRentForPeriod = filterRentMonths ? filterRentMonths.length * totalMonthlyRent : null;
+
+  // Other KPIs (date-filtered)
+  const income   = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
+  const expenses = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
+  const netIncome = income - expenses;
 
   const periodLabel = PERIOD_LABELS[dateFilter] || '';
 
-  // ── Rent Status panel (all transactions, selectedMonth) ──
+  // ── Rent Status panel (allTransactions, selectedMonth) ──────────────────────
   const unmatchedIncome = allTransactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
 
-  const collectedForMonth = allTransactions
-    .filter(tx => tx.type === 'income' && tx.tenant_id && tx.rent_month === selectedMonth)
-    .reduce((s, tx) => s + parseFloat(tx.amount), 0);
-
+  // Build per-tenant rent status with shortfall detection
   const rentStatus = tenants.map(tenant => {
-    const paidTx = allTransactions.find(tx =>
+    const paidTxs = allTransactions.filter(tx =>
       tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === selectedMonth
     );
-    return { tenant, paid: !!paidTx, paidDate: paidTx?.date || null };
+    const amountPaid = paidTxs.reduce((s, tx) => s + parseFloat(tx.amount), 0);
+    const paidDate = paidTxs.length > 0
+      ? paidTxs.sort((a, b) => a.date.localeCompare(b.date))[0].date
+      : null;
+    const expectedRent = parseFloat(tenant.monthly_rent);
+    const shortfall = amountPaid > 0 ? Math.max(0, expectedRent - amountPaid) : 0;
+    return {
+      tenant,
+      paid: paidTxs.length > 0,
+      paidDate,
+      amountPaid,
+      shortfall: shortfall > 1 ? shortfall : 0, // ignore rounding < $1
+    };
   });
 
-  const paidCount      = rentStatus.filter(r => r.paid).length;
-  const unpaidTenants  = rentStatus.filter(r => !r.paid);
+  const collectedForMonth = rentStatus.reduce((s, r) => s + r.amountPaid, 0);
+  const paidCount     = rentStatus.filter(r => r.paid).length;
+  const unpaidTenants = rentStatus.filter(r => !r.paid);
   const rentOutstanding = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
-  const paidPct        = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
+  const paidPct = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
 
   const selectedMonthLabel = MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth;
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
-
   const isCustomActive = dateFilter === 'custom';
 
   return (
@@ -309,6 +373,7 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Alert banner driven by rent_month status — always consistent with OUTSTANDING KPI */}
       {unpaidTenants.length > 0 ? (
         <div className="alert alert-warn" style={{ marginBottom: 8 }}>
           {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {selectedMonthLabel}:{' '}
@@ -320,6 +385,7 @@ export default function Dashboard() {
           All {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} paid for {selectedMonthLabel}.
         </div>
       ) : null}
+
       {tenants.length > 0 && (
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
           Rent status for <strong>{selectedMonthLabel}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
@@ -341,17 +407,9 @@ export default function Dashboard() {
 
       {isCustomActive && (
         <div className="date-range-inputs">
-          <input
-            type="date"
-            value={customStart}
-            onChange={e => setCustomStart(e.target.value)}
-          />
+          <input type="date" value={customStart} onChange={e => setCustomStart(e.target.value)} />
           <span style={{ fontSize: 12, color: '#666' }}>to</span>
-          <input
-            type="date"
-            value={customEnd}
-            onChange={e => setCustomEnd(e.target.value)}
-          />
+          <input type="date" value={customEnd} onChange={e => setCustomEnd(e.target.value)} />
         </div>
       )}
 
@@ -363,22 +421,46 @@ export default function Dashboard() {
           <div className="kpi-label">Rent Roll / Mo</div>
           <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
         </div>
+
         <div className="kpi-item">
-          <div className="kpi-label">Collected ({periodLabel})</div>
-          <div className="kpi-value">{txLoading ? '…' : `$${collected.toLocaleString()}`}</div>
+          <div className="kpi-label">
+            Collected ({periodLabel})
+            {expectedRentForPeriod != null && collected < expectedRentForPeriod && (
+              <span style={{ fontSize: 10, color: '#B45309', marginLeft: 4 }}>
+                of ${expectedRentForPeriod.toLocaleString()}
+              </span>
+            )}
+          </div>
+          <div className="kpi-value">{txLoading ? '…' : `$${Math.round(collected).toLocaleString()}`}</div>
         </div>
+
         <div className="kpi-item">
           <div className="kpi-label">Outstanding ({periodLabel})</div>
-          <div className={`kpi-value${outstanding > 0 ? ' negative' : ' muted'}`}>
-            {txLoading ? '…' : outstanding !== null ? `$${outstanding.toLocaleString()}` : '—'}
+          <div
+            style={{ position: 'relative', cursor: outstandingByRM !== null ? 'help' : 'default' }}
+            onMouseEnter={() => outstandingByRM !== null && setShowOutstandingTooltip(true)}
+            onMouseLeave={() => setShowOutstandingTooltip(false)}
+          >
+            <div className={`kpi-value${outstandingByRM > 0 ? ' negative' : ' muted'}`}>
+              {txLoading ? '…' : outstandingByRM !== null ? `$${outstandingByRM.toLocaleString()}` : '—'}
+            </div>
+            {showOutstandingTooltip && outstandingByRM !== null && (
+              <OutstandingTooltip
+                breakdown={outstandingBreakdown}
+                filterRentMonths={filterRentMonths}
+                tenantCount={tenants.length}
+              />
+            )}
           </div>
         </div>
+
         <div className="kpi-item">
           <div className="kpi-label">Net Income ({periodLabel})</div>
           <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>
             {txLoading ? '…' : `$${netIncome.toLocaleString()}`}
           </div>
         </div>
+
         <div className="kpi-item">
           <div className="kpi-label">Tenants</div>
           <div className="kpi-value muted">{tenants.length}</div>
@@ -402,30 +484,23 @@ export default function Dashboard() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
               <colgroup>
-                <col style={{ width: 80 }} />
-                <col />
-                <col style={{ width: 110 }} />
-                <col style={{ width: 75 }} />
-                <col style={{ width: 120 }} />
-                <col style={{ width: 140 }} />
-                <col style={{ width: 120 }} />
+                <col style={{ width: 80 }} /><col /><col style={{ width: 110 }} />
+                <col style={{ width: 75 }} /><col style={{ width: 120 }} />
+                <col style={{ width: 140 }} /><col style={{ width: 120 }} />
               </colgroup>
               <thead>
                 <tr>
-                  <th>Date</th>
-                  <th>Description</th>
-                  <th className="num">Amount</th>
-                  <th>Type</th>
-                  <th>Category</th>
-                  <th>Property</th>
-                  <th>Tenant</th>
+                  <th>Date</th><th>Description</th><th className="num">Amount</th>
+                  <th>Type</th><th>Category</th><th>Property</th><th>Tenant</th>
                 </tr>
               </thead>
               <tbody>
                 {transactions.slice(0, 50).map((tx) => (
                   <tr key={tx.id}>
                     <td className="nowrap mono" style={{ fontSize: 12 }}>{fmtDate(tx.date)}</td>
-                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.display_description || tx.description}</td>
+                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
+                      {tx.display_description || tx.description}
+                    </td>
                     <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                     <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
                     <td className="nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
@@ -460,7 +535,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Rent Status ── */}
-        <div style={{ flexShrink: 0, width: 360 }}>
+        <div style={{ flexShrink: 0, width: 380 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
             <select
@@ -475,16 +550,13 @@ export default function Dashboard() {
 
           <table style={{ tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
-              <col />
-              <col style={{ width: 80 }} />
-              <col style={{ width: 70 }} />
-              <col style={{ width: 60 }} />
+              <col /><col style={{ width: 78 }} /><col style={{ width: 62 }} /><col style={{ width: 90 }} />
             </colgroup>
             <thead>
               <tr>
                 <th>Tenant</th>
                 <th className="num">Rent</th>
-                <th>Paid Date</th>
+                <th>Paid</th>
                 <th>Status</th>
               </tr>
             </thead>
@@ -495,11 +567,11 @@ export default function Dashboard() {
                     {paidCount} / {tenants.length} PAID
                   </td>
                   <td colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
-                    ${collectedForMonth.toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
+                    ${Math.round(collectedForMonth).toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
                   </td>
                 </tr>
               )}
-              {rentStatus.map(({ tenant, paid, paidDate }) => (
+              {rentStatus.map(({ tenant, paid, paidDate, shortfall }) => (
                 <tr key={tenant.id}>
                   <td>
                     <a
@@ -510,13 +582,28 @@ export default function Dashboard() {
                       {tenant.name}
                     </a>
                   </td>
-                  <td className="num mono" style={{ fontSize: 12 }}>${parseFloat(tenant.monthly_rent).toLocaleString()}</td>
-                  <td className="nowrap" style={{ fontSize: 12, color: '#666' }}>{paid ? fmtDate(paidDate) : '—'}</td>
+                  <td className="num mono" style={{ fontSize: 12 }}>
+                    ${parseFloat(tenant.monthly_rent).toLocaleString()}
+                  </td>
+                  <td className="nowrap" style={{ fontSize: 12, color: '#666' }}>
+                    {paid ? fmtDate(paidDate) : '—'}
+                  </td>
                   <td className="nowrap">
-                    {paid
-                      ? <span className="status-paid">● PAID</span>
-                      : <span className="status-unpaid">● DUE</span>
-                    }
+                    {!paid ? (
+                      <span className="status-unpaid">● DUE</span>
+                    ) : shortfall > 0 ? (
+                      <span
+                        title={`Paid $${shortfall.toFixed(2)} less than expected rent of $${parseFloat(tenant.monthly_rent).toLocaleString()}`}
+                        style={{
+                          color: '#B45309', fontWeight: 700, fontSize: 11,
+                          letterSpacing: '0.04em', cursor: 'help',
+                        }}
+                      >
+                        ● PAID <span style={{ fontWeight: 400, fontSize: 10 }}>(short ${shortfall.toFixed(0)})</span>
+                      </span>
+                    ) : (
+                      <span className="status-paid">● PAID</span>
+                    )}
                   </td>
                 </tr>
               ))}
