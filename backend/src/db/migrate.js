@@ -298,6 +298,25 @@ async function migrate() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_payer_patterns_name ON payer_patterns (payer_name)`);
 
+  // Table: payer_name + amount_bucket → tenant_id (amount-specific prediction)
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS payer_amount_patterns (
+      id                SERIAL PRIMARY KEY,
+      payer_name        TEXT NOT NULL,
+      amount_bucket     NUMERIC(10,2) NOT NULL,
+      tenant_id         INTEGER REFERENCES tenants(id) ON DELETE SET NULL,
+      category          TEXT NOT NULL DEFAULT 'rent',
+      confirmed_count   INTEGER NOT NULL DEFAULT 1,
+      last_confirmed_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_payer_amount_pname ON payer_amount_patterns (payer_name)`);
+  // Expression-based unique index: treats NULL tenant_id as 0 to avoid multiple-NULL ambiguity
+  await db.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_payer_amount_unique
+      ON payer_amount_patterns (payer_name, amount_bucket, COALESCE(tenant_id::integer, 0), category)
+  `);
+
   // Column: human-readable cleaned description for UI display
   await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS display_description TEXT`);
 
@@ -346,6 +365,43 @@ async function migrate() {
     } catch {}
   }
   console.log(`[migrate] Learned ${patternLearned} payer_patterns from ${assignedIncome.length} historical assignments`);
+
+  // Backfill payer_amount_patterns from historical income assignments
+  const { rows: assignedIncomeAmt } = await db.query(`
+    SELECT t.id, t.description, t.amount, t.tenant_id, t.category
+    FROM transactions t
+    WHERE t.type = 'income' AND t.tenant_id IS NOT NULL AND t.payer_name IS NOT NULL
+  `);
+  let amtPatternLearned = 0;
+  for (const row of assignedIncomeAmt) {
+    const pn = extractSenderName(row.description);
+    if (!pn) continue;
+    const bucket = Math.round(Math.abs(parseFloat(row.amount)) / 5.0) * 5;
+    const category = row.category || 'rent';
+    try {
+      const { rows: existing } = await db.query(
+        `SELECT id FROM payer_amount_patterns
+         WHERE payer_name=$1 AND amount_bucket=$2 AND category=$3
+         AND (tenant_id=$4 OR (tenant_id IS NULL AND $4::integer IS NULL))`,
+        [pn, bucket, category, row.tenant_id]
+      );
+      if (existing.length > 0) {
+        await db.query(
+          'UPDATE payer_amount_patterns SET confirmed_count=confirmed_count+1, last_confirmed_at=NOW() WHERE id=$1',
+          [existing[0].id]
+        );
+      } else {
+        await db.query(
+          'INSERT INTO payer_amount_patterns (payer_name, amount_bucket, tenant_id, category) VALUES ($1,$2,$3,$4)',
+          [pn, bucket, row.tenant_id, category]
+        );
+      }
+      amtPatternLearned++;
+    } catch (err) {
+      console.error(`[migrate] payer_amount_patterns backfill error: ${err.message}`);
+    }
+  }
+  console.log(`[migrate] Backfilled ${amtPatternLearned} payer_amount_patterns from ${assignedIncomeAmt.length} historical assignments`);
 
   console.log('[migrate] Database ready');
 

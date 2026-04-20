@@ -1,6 +1,6 @@
 const db = require('../db/db');
 const { calculateRentMonth } = require('./rentMonth');
-const { extractSenderName } = require('../prediction/engine');
+const { extractSenderName, amountMatchesTolerance } = require('../prediction/engine');
 
 const AMOUNT_EXACT_TOL   = 1;    // $1 tolerance for exact amount match
 const AMOUNT_PARTIAL_PCT = 0.10; // 10% tolerance for payer-pattern amount validation
@@ -66,7 +66,7 @@ function payerNameMatchesTenant(payerName, tenant, aliasMap) {
   return descMatchesTenantByName(payerName, tenant, aliasMap);
 }
 
-function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap = new Map(), payerConflicts = new Set()) {
+function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap = new Map(), payerConflicts = new Set(), payerAmountPatternMap = new Map()) {
   const amount  = parseFloat(tx.amount);
   const desc    = tx.description || '';
   const dateStr = tx.date ? String(tx.date).slice(0, 10) : '';
@@ -110,6 +110,40 @@ function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, p
     const reasoning = `No confident match — rent amount $${amount} matches multiple tenants: ${names}, and no payer name identified`;
     console.log(`[rent-match] $${amount} on ${dateStr} — description: '${desc}' — ${reasoning}`);
     return { tenant_id: null, match_confidence: 'ambiguous', needs_review: true, prediction_reasoning: reasoning };
+  }
+
+  // LAYER 3a': Payer-name + amount match (amount-specific — takes priority over payer-only)
+  if (payerName) {
+    const amtPatterns = payerAmountPatternMap.get(payerName) || [];
+    if (amtPatterns.length > 0) {
+      const matchingAmt = amtPatterns.filter(p => amountMatchesTolerance(amount, p.amount_bucket));
+      if (matchingAmt.length > 0) {
+        const uniqueTenants = [...new Set(matchingAmt.map(p => p.tenant_id).filter(Boolean))];
+        if (uniqueTenants.length === 1) {
+          const tid = uniqueTenants[0];
+          const tenant = tenants.find(t => t.id === tid);
+          const totalCount = matchingAmt.reduce((s, p) => s + p.confirmed_count, 0);
+          const reasoning = `[rent-match] $${amount} on ${dateStr} — payer "${payerName}" at ~$${matchingAmt[0].amount_bucket} (${totalCount} confirmed) → ${tenant?.name}`;
+          console.log(reasoning);
+          return { tenant_id: tid, match_confidence: 'exact', needs_review: false, matched_by: 'payer_amount', prediction_reasoning: reasoning };
+        }
+        // Conflicting tenants at this amount
+        const reasoning = `[rent-match] $${amount} on ${dateStr} — payer "${payerName}" has conflicting amount patterns — ambiguous`;
+        console.log(reasoning);
+        return { tenant_id: null, match_confidence: 'ambiguous', needs_review: true, prediction_reasoning: reasoning };
+      }
+      // No amount match, but payer maps to multiple tenants — block payer-only fallthrough
+      const allAmtTenants = [...new Set(amtPatterns.map(p => p.tenant_id).filter(Boolean))];
+      if (allAmtTenants.length > 1) {
+        const amtMappings = amtPatterns.map(p => {
+          const t = tenants.find(t => t.id === p.tenant_id);
+          return `$${p.amount_bucket}→${t?.name || p.tenant_id}`;
+        }).join(', ');
+        const reasoning = `[rent-match] $${amount} on ${dateStr} — payer "${payerName}" maps to different tenants by amount [${amtMappings}], $${amount} not recognized`;
+        console.log(reasoning);
+        return { tenant_id: null, match_confidence: 'ambiguous', needs_review: true, prediction_reasoning: reasoning };
+      }
+    }
   }
 
   // LAYER 3a: Payer-name pattern match (full extracted sender name → confirmed tenant)
@@ -168,14 +202,47 @@ function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, p
 
 async function learnPattern(txId, tenantId, description) {
   let desc = description;
+  let txAmount = null;
   if (!desc) {
-    const { rows } = await db.query('SELECT description FROM transactions WHERE id=$1', [txId]);
+    const { rows } = await db.query('SELECT description, amount FROM transactions WHERE id=$1', [txId]);
     if (!rows.length) return;
     desc = rows[0].description;
+    txAmount = rows[0].amount;
+  } else {
+    const { rows } = await db.query('SELECT amount FROM transactions WHERE id=$1', [txId]);
+    if (rows.length) txAmount = rows[0].amount;
   }
 
-  // Primary: save full payer_name to payer_patterns table
   const payerName = extractSenderName(desc);
+
+  // Primary: save payer_name + amount_bucket → tenant (amount-specific)
+  if (payerName && txAmount != null) {
+    const bucket = Math.round(Math.abs(parseFloat(txAmount)) / 5.0) * 5;
+    try {
+      const { rows: existing } = await db.query(
+        `SELECT id FROM payer_amount_patterns
+         WHERE payer_name=$1 AND amount_bucket=$2 AND category='rent'
+         AND (tenant_id=$3 OR (tenant_id IS NULL AND $3::integer IS NULL))`,
+        [payerName, bucket, tenantId || null]
+      );
+      if (existing.length > 0) {
+        await db.query(
+          'UPDATE payer_amount_patterns SET confirmed_count=confirmed_count+1, last_confirmed_at=NOW() WHERE id=$1',
+          [existing[0].id]
+        );
+      } else {
+        await db.query(
+          'INSERT INTO payer_amount_patterns (payer_name, amount_bucket, tenant_id, category) VALUES ($1,$2,$3,$4)',
+          [payerName, bucket, tenantId || null, 'rent']
+        );
+      }
+      console.log(`[matcher] Learned payer_amount_pattern "${payerName}" @ $${bucket} → tenant ${tenantId}`);
+    } catch (err) {
+      console.error('[matcher] payer_amount_patterns insert failed:', err.message);
+    }
+  }
+
+  // Also save to payer_patterns (payer-only, for backwards compat)
   if (payerName) {
     try {
       await db.query(
@@ -185,13 +252,12 @@ async function learnPattern(txId, tenantId, description) {
          DO UPDATE SET confirmed_count = payer_patterns.confirmed_count + 1, last_confirmed_at = NOW()`,
         [payerName, tenantId]
       );
-      console.log(`[matcher] Learned payer_name "${payerName}" → tenant ${tenantId}`);
     } catch (err) {
       console.error('[matcher] payer_patterns insert failed:', err.message);
     }
   }
 
-  // Also update payer_name on the transaction itself
+  // Update payer_name on the transaction itself
   if (payerName) {
     try {
       await db.query('UPDATE transactions SET payer_name=$1 WHERE id=$2', [payerName, txId]);
@@ -210,7 +276,7 @@ async function learnPattern(txId, tenantId, description) {
     );
   }
   if (keywords.length || payerName) {
-    console.log(`[matcher] Learned ${keywords.length} keywords${payerName ? ` + payer_name "${payerName}"` : ''} for tenant ${tenantId}`);
+    console.log(`[matcher] Learned ${keywords.length} keywords${payerName ? ` + payer_amount + payer_name` : ''} for tenant ${tenantId}`);
   }
 }
 
@@ -254,6 +320,18 @@ async function autoMatchAll() {
     }
   } catch {} // payer_patterns table may not exist yet
 
+  // Build payer_amount patternMap (payer_name + amount_bucket → tenant)
+  const payerAmountPatternMap = new Map(); // payer_name → [{amount_bucket, tenant_id, confirmed_count}]
+  try {
+    const { rows: payerAmtPatterns } = await db.query(
+      'SELECT payer_name, amount_bucket, tenant_id, confirmed_count FROM payer_amount_patterns ORDER BY confirmed_count DESC'
+    );
+    for (const { payer_name, amount_bucket, tenant_id, confirmed_count } of payerAmtPatterns) {
+      if (!payerAmountPatternMap.has(payer_name)) payerAmountPatternMap.set(payer_name, []);
+      payerAmountPatternMap.get(payer_name).push({ amount_bucket: parseFloat(amount_bucket), tenant_id, confirmed_count });
+    }
+  } catch {} // payer_amount_patterns table may not exist yet
+
   const { rows: transactions } = await db.query(`
     SELECT id, amount, description, date FROM transactions
     WHERE type = 'income' AND tenant_id IS NULL
@@ -262,7 +340,7 @@ async function autoMatchAll() {
   let cPattern = 0, cExact = 0, cAmountOnly = 0, cAmbiguous = 0, cNone = 0;
 
   for (const tx of transactions) {
-    const result = matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap, payerConflicts);
+    const result = matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap, payerConflicts, payerAmountPatternMap);
     let rent_month = null, needs_month_review = false;
     if (result.tenant_id) {
       ({ rent_month, needs_month_review } = calculateRentMonth(tx.date));
@@ -281,7 +359,7 @@ async function autoMatchAll() {
       await learnPattern(tx.id, result.tenant_id, tx.description);
     }
 
-    if (result.matched_by === 'pattern' || result.matched_by === 'pattern_medium' || result.matched_by === 'payer_name') cPattern++;
+    if (result.matched_by === 'pattern' || result.matched_by === 'pattern_medium' || result.matched_by === 'payer_name' || result.matched_by === 'payer_amount') cPattern++;
     else if (result.match_confidence === 'exact')       cExact++;
     else if (result.match_confidence === 'amount_only') cAmountOnly++;
     else if (result.match_confidence === 'ambiguous')   cAmbiguous++;

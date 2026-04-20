@@ -272,12 +272,93 @@ function predictFuzzy(norm, candidates) {
 
 // ── Payer-name prediction (income transactions with payment-rail sender) ───────
 
-function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHistoryMap, tenants) {
+function amountMatchesTolerance(txAmt, storedBucket) {
+  const abs = Math.abs(txAmt);
+  const tol = abs > 500
+    ? Math.min(5, abs * 0.01)
+    : Math.min(2, abs * 0.02);
+  return Math.abs(abs - storedBucket) <= tol;
+}
+
+function predictByPayerName(txId, amount, payerName, payerPatternMap, payerAmountMap, payerHistoryMap, tenants) {
   if (!payerName) return null;
 
-  const amtStr = `$${Math.abs(parseFloat(amount)).toLocaleString()}`;
+  const txAmt = Math.abs(parseFloat(amount));
+  const amtStr = `$${txAmt.toLocaleString()}`;
 
-  // 1. Check confirmed payer_patterns table entries
+  // 1. Check amount-specific patterns (payer_name + amount_bucket → tenant)
+  const amountPatterns = payerAmountMap.get(payerName) || [];
+  if (amountPatterns.length > 0) {
+    const matchingAmt = amountPatterns.filter(p => amountMatchesTolerance(txAmt, p.amount_bucket));
+
+    if (matchingAmt.length > 0) {
+      const uniqueTenants = [...new Set(matchingAmt.map(p => p.tenant_id).filter(Boolean))];
+      const totalCount = matchingAmt.reduce((s, p) => s + p.confirmed_count, 0);
+      if (uniqueTenants.length === 1) {
+        const tid = uniqueTenants[0];
+        const tenant = tenants.find(t => t.id === tid);
+        console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — amount-specific pattern ~$${matchingAmt[0].amount_bucket} → ${tenant?.name || tid} (${totalCount} confirmed) — HIGH`);
+        return {
+          predicted_category:       'rent',
+          predicted_property_id:    tenant?.property_id || null,
+          predicted_property_scope: null,
+          predicted_tenant_id:      tid,
+          prediction_confidence:    'HIGH',
+          prediction_reasoning:     `Payer "${payerName}" at ~${amtStr} confirmed ${totalCount} time(s) as ${tenant?.name || tid}`,
+          prediction_examples:      null,
+        };
+      }
+      console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — conflicting amount-specific patterns — predicting rent, no tenant`);
+      return {
+        predicted_category:       'rent',
+        predicted_property_id:    null,
+        predicted_property_scope: null,
+        predicted_tenant_id:      null,
+        prediction_confidence:    'MEDIUM',
+        prediction_reasoning:     `Payer "${payerName}" at ~${amtStr} has conflicting patterns`,
+        prediction_examples:      null,
+      };
+    }
+
+    // Payer has amount patterns but none match this amount
+    const allAmtTenants = [...new Set(amountPatterns.map(p => p.tenant_id).filter(Boolean))];
+    if (allAmtTenants.length === 1) {
+      // All known amounts go to same tenant — likely a rent increase, still predict
+      const tid = allAmtTenants[0];
+      const tenant = tenants.find(t => t.id === tid);
+      const knownAmts = amountPatterns.map(p => `$${p.amount_bucket}`).join(', ');
+      console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — no amt match but payer always → ${tenant?.name || tid} — MEDIUM`);
+      return {
+        predicted_category:       'rent',
+        predicted_property_id:    tenant?.property_id || null,
+        predicted_property_scope: null,
+        predicted_tenant_id:      tid,
+        prediction_confidence:    'MEDIUM',
+        prediction_reasoning:     `Payer "${payerName}" always pays ${tenant?.name || tid} (known amounts: ${knownAmts}); ${amtStr} is a new amount`,
+        prediction_examples:      null,
+      };
+    }
+
+    if (allAmtTenants.length > 1) {
+      // NEVER predict tenant when payer maps to different tenants at different amounts
+      const amtMappings = amountPatterns.map(p => {
+        const t = tenants.find(t => t.id === p.tenant_id);
+        return `$${p.amount_bucket}→${t?.name || p.tenant_id}`;
+      }).join('; ');
+      console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — amount-specific conflict [${amtMappings}] — no tenant prediction`);
+      return {
+        predicted_category:       'rent',
+        predicted_property_id:    null,
+        predicted_property_scope: null,
+        predicted_tenant_id:      null,
+        prediction_confidence:    'MEDIUM',
+        prediction_reasoning:     `Payer "${payerName}" sends different amounts to different tenants: ${amtMappings}. Amount ${amtStr} not recognized — tenant unclear`,
+        prediction_examples:      null,
+      };
+    }
+  }
+
+  // 2. Check confirmed payer_patterns (non-amount-specific legacy patterns)
   const patterns = payerPatternMap.get(payerName) || [];
   if (patterns.length > 0) {
     const uniqueTenants = [...new Set(patterns.map(p => p.tenant_id))];
@@ -285,7 +366,7 @@ function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHisto
     if (uniqueTenants.length === 1) {
       const tid = uniqueTenants[0];
       const tenant = tenants.find(t => t.id === tid);
-      console.log(`[predict] Transaction ${txId}: payer_name='${payerName}', amount=${amtStr} — found ${totalCount} confirmed pattern(s) for this payer, all assigned to ${tenant?.name || tid} (tenant_id=${tid}) — predicting with HIGH confidence`);
+      console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — payer_patterns → ${tenant?.name || tid} (${totalCount} confirmed) — HIGH`);
       return {
         predicted_category:       'rent',
         predicted_property_id:    tenant?.property_id || null,
@@ -296,9 +377,7 @@ function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHisto
         prediction_examples:      null,
       };
     }
-    // Conflicting tenants for same payer — don't predict tenant, but predict category
-    const catVote = topVote(patterns.map(p => ({ category: 'rent' })), 'category');
-    console.log(`[predict] Transaction ${txId}: payer_name='${payerName}', amount=${amtStr} — confirmed patterns exist but across multiple tenants — predicting rent, no tenant`);
+    console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — payer_patterns conflict — predicting rent, no tenant`);
     return {
       predicted_category:       'rent',
       predicted_property_id:    null,
@@ -310,12 +389,12 @@ function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHisto
     };
   }
 
-  // 2. Check transaction history for this payer
+  // 3. Check transaction history for this payer
   const history = payerHistoryMap.get(payerName) || [];
   if (history.length >= 1) {
     const catVote = topVote(history, 'category');
     if (!catVote || catVote.count / history.length < 0.80) {
-      console.log(`[predict] Transaction ${txId}: payer_name='${payerName}', amount=${amtStr} — found ${history.length} past transaction(s) for this payer but no majority category`);
+      console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — ${history.length} past tx(s) but no majority category`);
       return null;
     }
     const agreers = history.filter(h => h.category === catVote.value);
@@ -328,11 +407,10 @@ function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHisto
     const tenant = tid ? tenants.find(t => t.id === tid) : null;
 
     console.log(
-      `[predict] Transaction ${txId}: payer_name='${payerName}', amount=${amtStr} — ` +
-      `found ${history.length} past transaction(s) matching this payer, ` +
-      `${catVote.count}/${history.length} assigned to ${catVote.value}` +
-      (unanimousTenant ? ` for ${tenant?.name || tid} (tenant_id=${tid})` : '') +
-      ` — predicting with ${history.length >= 3 ? 'HIGH' : 'MEDIUM'} confidence`
+      `[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — ` +
+      `${history.length} past tx(s), ${catVote.count}/${history.length} as ${catVote.value}` +
+      (unanimousTenant ? ` for ${tenant?.name || tid}` : '') +
+      ` — ${history.length >= 3 ? 'HIGH' : 'MEDIUM'}`
     );
 
     return {
@@ -346,7 +424,7 @@ function predictByPayerName(txId, amount, payerName, payerPatternMap, payerHisto
     };
   }
 
-  console.log(`[predict] Transaction ${txId}: payer_name='${payerName}', amount=${amtStr} — no payer history found — falling back to fuzzy similarity`);
+  console.log(`[predict] Transaction ${txId}: payer='${payerName}', amount=${amtStr} — no payer history — falling back to fuzzy similarity`);
   return null;
 }
 
@@ -499,6 +577,18 @@ async function predictAll() {
     }
   } catch {} // Table may not exist on first run
 
+  // Load amount-specific patterns (payer_name + amount_bucket → tenant)
+  const payerAmountMap = new Map(); // payer_name → [{amount_bucket, tenant_id, category, confirmed_count}]
+  try {
+    const { rows: payerAmtPatterns } = await db.query(
+      'SELECT payer_name, amount_bucket, tenant_id, category, confirmed_count FROM payer_amount_patterns ORDER BY confirmed_count DESC'
+    );
+    for (const { payer_name, amount_bucket, tenant_id, category, confirmed_count } of payerAmtPatterns) {
+      if (!payerAmountMap.has(payer_name)) payerAmountMap.set(payer_name, []);
+      payerAmountMap.get(payer_name).push({ amount_bucket: parseFloat(amount_bucket), tenant_id, category, confirmed_count });
+    }
+  } catch {} // Table may not exist on first run
+
   // Build payer history map from already-classified income transactions
   const payerHistoryMap = new Map(); // payer_name → [{tenant_id, category, property_id}]
   for (const row of training) {
@@ -545,7 +635,7 @@ async function predictAll() {
     // Payer-name matching: for income transactions with a recognized payment-rail sender,
     // match against confirmed payer_patterns and transaction history BEFORE fuzzy similarity.
     if (tx.type === 'income' && payerName) {
-      pred = predictByPayerName(tx.id, tx.amount, payerName, payerPatternMap, payerHistoryMap, tenants);
+      pred = predictByPayerName(tx.id, tx.amount, payerName, payerPatternMap, payerAmountMap, payerHistoryMap, tenants);
     }
 
     // Fall back to Jaccard fuzzy similarity
@@ -598,4 +688,4 @@ async function predictAll() {
   };
 }
 
-module.exports = { predictAll, normalizeDescription, computeDisplayDescription, extractSenderName, jaccardSimilarity };
+module.exports = { predictAll, normalizeDescription, computeDisplayDescription, extractSenderName, jaccardSimilarity, amountMatchesTolerance };
