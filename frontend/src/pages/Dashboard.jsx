@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
-import { formatMoney, formatDate } from '../utils/format';
+import { formatMoney, formatDate, formatType } from '../utils/format';
 import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
 
@@ -509,7 +509,7 @@ export default function Dashboard() {
                       <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
                       {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
                       {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
-                      <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{tx.type}</span>
+                      <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{formatType(tx.type)}</span>
                     </td>
                     {/* Desktop columns */}
                     <td className="nowrap mono show-desktop" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
@@ -517,7 +517,7 @@ export default function Dashboard() {
                       {tx.display_description || tx.description}
                     </td>
                     <td className="num mono show-desktop">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                    <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                    <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
                     <td className="nowrap show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
                     <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                       {tx.property_scope === 'portfolio'

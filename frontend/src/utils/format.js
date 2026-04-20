@@ -145,3 +145,15 @@ export function formatAddress(address) {
     .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ');
 }
+
+/** 'expense' → 'Expense', 'income' → 'Income' */
+export function formatType(type) {
+  if (!type) return '';
+  return type.charAt(0).toUpperCase() + type.slice(1).toLowerCase();
+}
+
+/** Ensures category is Title Case for display (DB should already store Title Case after migration). */
+export function formatCategory(category) {
+  if (!category) return '';
+  return category;
+}

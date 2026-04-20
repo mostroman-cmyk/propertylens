@@ -10,7 +10,7 @@ import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
-const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
+const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 
 function groupByNormalized(txs) {
   const map = new Map();

@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, bulkUpdateTransactions } from '../api';
-import { formatMoney, formatDate } from '../utils/format';
+import { formatMoney, formatDate, formatType } from '../utils/format';
 import EmptyState from '../components/EmptyState';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
-const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
+const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 
 function normalizeDesc(desc) {
   return desc.toUpperCase()
@@ -182,8 +182,8 @@ export default function ReviewClassifications() {
         </select>
         <select className="form-input form-input-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
           <option value="All">All types</option>
-          <option value="income">income</option>
-          <option value="expense">expense</option>
+          <option value="income">Income</option>
+          <option value="expense">Expense</option>
         </select>
         <select className="form-input form-input-sm" value={filterConfidence} onChange={e => setFilterConfidence(e.target.value)}>
           <option value="All">All confidence</option>
@@ -282,7 +282,7 @@ export default function ReviewClassifications() {
                 </td>
                 <td data-label="Description" className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
                 <td data-label="Amount" className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                <td data-label="Type" className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                <td data-label="Type" className="nowrap"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
 
                 <td data-label="Category" className="nowrap">
                   {editingCell?.txId === tx.id && editingCell?.field === 'category' ? (

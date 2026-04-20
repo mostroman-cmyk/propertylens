@@ -439,6 +439,23 @@ async function migrate() {
     }
   } catch {}
 
+  // ── Category normalization — ensure all stored categories are Title Case ──────
+  const { CATEGORY_MAP } = require('../utils/normalizeCategory');
+  let catNormTotal = 0;
+  for (const [lower, canonical] of Object.entries(CATEGORY_MAP)) {
+    const [r1, r2, r3] = await Promise.all([
+      db.query(`UPDATE transactions SET category=$1 WHERE LOWER(TRIM(category))=$2 AND category<>$1`, [canonical, lower]),
+      db.query(`UPDATE categorization_rules SET category=$1 WHERE LOWER(TRIM(category))=$2 AND category<>$1`, [canonical, lower]),
+      db.query(`UPDATE pattern_amount_rules SET category=$1 WHERE LOWER(TRIM(category))=$2 AND category<>$1`, [canonical, lower]),
+    ]);
+    const n = r1.rowCount + r2.rowCount + r3.rowCount;
+    if (n > 0) {
+      console.log(`[migrate] Category: '${lower}' → '${canonical}': ${n} rows`);
+      catNormTotal += n;
+    }
+  }
+  if (catNormTotal > 0) console.log(`[migrate] Category normalization complete: ${catNormTotal} total rows updated`);
+
   // Former tenant support
   await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
   await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS lease_start_date DATE`);

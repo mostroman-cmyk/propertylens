@@ -8,7 +8,7 @@ import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { saveAs } from 'file-saver';
-import { formatMoney, formatDate } from './format';
+import { formatMoney, formatDate, formatType } from './format';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -175,7 +175,7 @@ export function buildCSV({ plData, transactions, tenants, year }) {
       tx.date,
       tx.display_description || tx.description,
       (parseFloat(tx.amount) || 0).toFixed(2),
-      tx.type,
+      formatType(tx.type),
       tx.category || '',
       tx.property_scope === 'portfolio' ? 'All Properties (Portfolio)' : (tx.property_name || ''),
       tx.tenant_name || '',
@@ -385,7 +385,7 @@ export function buildPDF({ plData, transactions, tenants, year }) {
     head: [['Category', 'Type', '# Transactions', 'Total', '% of Type']],
     body: cats.map(c => [
       c.category,
-      c.type,
+      formatType(c.type),
       String(c.count),
       money(c.total),
       pct(c.total, c.type === 'income' ? incTotal : expTotal),
@@ -459,7 +459,7 @@ export function buildPDF({ plData, transactions, tenants, year }) {
       tx.date,
       (tx.display_description || tx.description || '').substring(0, 48),
       money(Math.abs(parseFloat(tx.amount) || 0)),
-      tx.type || '',
+      formatType(tx.type),
       tx.category || '',
       tx.property_scope === 'portfolio' ? 'Portfolio' : (tx.property_name || '—'),
       tx.tenant_name || '—',
@@ -611,7 +611,7 @@ export function buildExcel({ plData, transactions, tenants, year }) {
     tx.date,
     tx.display_description || tx.description || '',
     Math.abs(parseFloat(tx.amount) || 0),
-    tx.type || '',
+    formatType(tx.type),
     tx.category || '',
     tx.property_scope === 'portfolio' ? 'All Properties (Portfolio)' : (tx.property_name || ''),
     tx.tenant_name || '',
@@ -634,7 +634,7 @@ export function buildExcel({ plData, transactions, tenants, year }) {
   const expTotal = transactions.filter(t => t.type !== 'income').reduce((s, t) => s + Math.abs(parseFloat(t.amount) || 0), 0);
   const catRows = cats.map(c => [
     c.category,
-    c.type,
+    formatType(c.type),
     c.count,
     c.total,
     c.type === 'income' ? (incTotal > 0 ? c.total / incTotal : 0) : (expTotal > 0 ? c.total / expTotal : 0),
@@ -787,7 +787,7 @@ export async function downloadTaxPackage({ plData, transactions, tenants, year }
       tx.date,
       tx.display_description || tx.description,
       (Math.abs(parseFloat(tx.amount) || 0)).toFixed(2),
-      tx.type,
+      formatType(tx.type),
       tx.category || '',
       tx.property_scope === 'portfolio' ? 'All Properties' : (tx.property_name || ''),
       tx.tenant_name || '',
@@ -820,7 +820,7 @@ export function downloadFilteredTransactionsCSV(transactions, label = 'transacti
       tx.date,
       tx.display_description || tx.description,
       (Math.abs(parseFloat(tx.amount) || 0)).toFixed(2),
-      tx.type,
+      formatType(tx.type),
       tx.category || '',
       tx.property_scope === 'portfolio' ? 'All Properties' : (tx.property_name || ''),
       tx.tenant_name || '',

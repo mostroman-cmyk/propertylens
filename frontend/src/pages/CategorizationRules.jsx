@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react';
 import { getCategorizationRules, createCategorizationRule, deleteCategorizationRule, bulkCategorize } from '../api';
 import Toast, { useToast } from '../components/Toast';
 import EmptyState from '../components/EmptyState';
+import { formatType } from '../utils/format';
 
-const CATEGORIES = ['Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Legal', 'Software', 'Professional Services', 'Other Income', 'Other'];
+const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 const EMPTY_FORM = { keyword: '', category: 'Other', type: 'expense', priority: '0', property_scope: 'single' };
 
 export default function CategorizationRules() {
@@ -105,8 +106,8 @@ export default function CategorizationRules() {
           <div className="form-group">
             <label>Type</label>
             <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-              <option value="expense">expense</option>
-              <option value="income">income</option>
+              <option value="expense">Expense</option>
+              <option value="income">Income</option>
             </select>
           </div>
           <div className="form-group" style={{ width: 80 }}>
@@ -142,7 +143,7 @@ export default function CategorizationRules() {
             <tr key={rule.id}>
               <td data-label="Keyword"><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85rem' }}>{rule.keyword}</code></td>
               <td data-label="Category">{rule.category}</td>
-              <td data-label="Type"><span className={`badge ${rule.type}`}>{rule.type}</span></td>
+              <td data-label="Type"><span className={`badge ${rule.type}`}>{formatType(rule.type)}</span></td>
               <td data-label="Scope" style={{ fontSize: 11, color: rule.property_scope === 'portfolio' ? '#444' : '#aaa' }}>
                 {rule.property_scope === 'portfolio' ? '🏘 Portfolio' : 'Single'}
               </td>

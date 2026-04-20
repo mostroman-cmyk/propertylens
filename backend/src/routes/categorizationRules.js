@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
+const { normalizeCategory } = require('../utils/normalizeCategory');
 
 router.get('/', async (req, res) => {
   try {
@@ -17,7 +18,7 @@ router.post('/', async (req, res) => {
   try {
     const result = await db.query(
       'INSERT INTO categorization_rules (keyword, category, type, priority, property_scope) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [keyword.toUpperCase(), category, type, priority || 0, property_scope || 'single']
+      [keyword.toUpperCase(), normalizeCategory(category), type, priority || 0, property_scope || 'single']
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {

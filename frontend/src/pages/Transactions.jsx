@@ -3,11 +3,11 @@ import { getTransactions, getProperties, getTenants, updateTransaction, assignTe
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
-import { formatMoney, formatDate } from '../utils/format';
+import { formatMoney, formatDate, formatType } from '../utils/format';
 import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
 
-const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
+const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 
 function formatRentMonth(ym) {
   if (!ym) return '—';
@@ -431,14 +431,14 @@ export default function Transactions() {
                   <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
                   {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
                   {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
-                  <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{tx.type}</span>
+                  <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{formatType(tx.type)}</span>
                 </td>
 
                 {/* Desktop columns */}
                 <td className="nowrap mono show-desktop">{formatDate(tx.date)}</td>
                 <td className="col-desc show-desktop" title={tx.description}>{tx.display_description || tx.description}</td>
                 <td className="num mono show-desktop">{formatMoney(Math.abs(txAmt))}</td>
-                <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
+                <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
                 <td className="nowrap show-desktop">{tx.category}</td>
                 <td style={{ color: '#666' }} className="show-desktop">
                   {tx.property_scope === 'portfolio'
@@ -569,8 +569,8 @@ export default function Transactions() {
             <div className="form-group">
               <label>Type</label>
               <select className="form-input" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
-                <option value="income">income</option>
-                <option value="expense">expense</option>
+                <option value="income">Income</option>
+                <option value="expense">Expense</option>
               </select>
             </div>
             <div className="form-group">
@@ -665,8 +665,8 @@ export default function Transactions() {
             <div className="form-group">
               <label>Type</label>
               <select className="form-input" value={ruleModal.type} onChange={e => setRuleModal(r => ({ ...r, type: e.target.value }))}>
-                <option value="expense">expense</option>
-                <option value="income">income</option>
+                <option value="expense">Expense</option>
+                <option value="income">Income</option>
               </select>
             </div>
           </div>

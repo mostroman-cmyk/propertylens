@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
+const { normalizeCategory } = require('../utils/normalizeCategory');
 
 router.get('/', async (req, res) => {
   try {
@@ -32,7 +33,7 @@ router.post('/', async (req, res) => {
       merchant_pattern.trim().toUpperCase(),
       amount != null && amount !== '' ? parseFloat(amount) : null,
       amount_tolerance != null && amount_tolerance !== '' ? parseFloat(amount_tolerance) : 2,
-      category || null,
+      normalizeCategory(category) || null,
       property_id || null,
       property_scope || 'single',
       tenant_id || null,
@@ -56,7 +57,7 @@ router.put('/:id', async (req, res) => {
       (merchant_pattern || '').trim().toUpperCase(),
       amount != null && amount !== '' ? parseFloat(amount) : null,
       amount_tolerance != null && amount_tolerance !== '' ? parseFloat(amount_tolerance) : 2,
-      category || null,
+      normalizeCategory(category) || null,
       property_id || null,
       property_scope || 'single',
       tenant_id || null,

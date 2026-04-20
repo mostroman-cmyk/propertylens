@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
+const { normalizeCategory } = require('../utils/normalizeCategory');
 const { autoMatchAll, learnPattern } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
 const { backfillPropertyTenant } = require('../matching/backfill');
@@ -37,7 +38,7 @@ router.post('/', async (req, res) => {
     const { normalizeDescription, computeDisplayDescription } = require('../prediction/engine');
     const result = await db.query(
       'INSERT INTO transactions (date, description, normalized_description, display_description, amount, type, category) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
-      [date, description, normalizeDescription(description), computeDisplayDescription(description), amount, type, category]
+      [date, description, normalizeDescription(description), computeDisplayDescription(description), amount, type, normalizeCategory(category)]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -50,16 +51,17 @@ router.put('/:id', async (req, res) => {
   if (!category || !type) return res.status(400).json({ error: 'category and type are required' });
   const scope = property_scope || 'single';
   const effectivePropertyId = scope === 'portfolio' ? null : (property_id || null);
+  const normCat = normalizeCategory(category);
   try {
     await db.query(
       'UPDATE transactions SET category=$1, type=$2, property_id=$3, property_scope=$4 WHERE id=$5',
-      [category, type, effectivePropertyId, scope, req.params.id]
+      [normCat, type, effectivePropertyId, scope, req.params.id]
     );
     const result = await db.query(SELECT_TX + ' WHERE tx.id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
     // Background: re-predict similar unclassified transactions using the new classification
-    if (category && !['Other', 'Other Income'].includes(category)) {
+    if (normCat && !['Other', 'Other Income'].includes(normCat)) {
       triggerLearnAsync(parseInt(req.params.id), 'manual_classify');
     }
   } catch (err) {
@@ -143,7 +145,7 @@ router.post('/bulk-update', async (req, res) => {
     } else {
       const sets = [];
       const params = [ids];
-      if (category    !== undefined) { params.push(category);          sets.push(`category=$${params.length}`);    }
+      if (category    !== undefined) { params.push(normalizeCategory(category)); sets.push(`category=$${params.length}`); }
       if (property_id !== undefined) { params.push(property_id||null); sets.push(`property_id=$${params.length}`); }
       if (tenant_id   !== undefined) { params.push(tenant_id||null);   sets.push(`tenant_id=$${params.length}`);   }
       if (!sets.length) return res.status(400).json({ error: 'Nothing to update' });
