@@ -5,6 +5,7 @@ const { autoMatchAll, learnPattern } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
 const { backfillPropertyTenant } = require('../matching/backfill');
 const { calculateRentMonth, recalculateRentMonths } = require('../matching/rentMonth');
+const { triggerLearnAsync } = require('../prediction/learner');
 
 const SELECT_TX = `
   SELECT tx.*, p.name AS property_name, t.name AS tenant_name
@@ -57,6 +58,10 @@ router.put('/:id', async (req, res) => {
     const result = await db.query(SELECT_TX + ' WHERE tx.id = $1', [req.params.id]);
     if (!result.rows.length) return res.status(404).json({ error: 'Not found' });
     res.json(result.rows[0]);
+    // Background: re-predict similar unclassified transactions using the new classification
+    if (category && !['Other', 'Other Income'].includes(category)) {
+      triggerLearnAsync(parseInt(req.params.id), 'manual_classify');
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

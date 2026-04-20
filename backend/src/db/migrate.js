@@ -262,6 +262,24 @@ async function migrate() {
     console.log(`[migrate] Backfilled normalized_description for ${missingNorm.length} transactions`);
   }
 
+  // Prediction transparency: store up to 5 example contributing transactions per prediction
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS prediction_examples TEXT`);
+
+  // Learning activity log
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS prediction_activity (
+      id           SERIAL PRIMARY KEY,
+      event_type   TEXT NOT NULL,
+      tx_id        INTEGER,
+      tx_desc      TEXT,
+      affected     INTEGER DEFAULT 0,
+      high_count   INTEGER DEFAULT 0,
+      medium_count INTEGER DEFAULT 0,
+      low_count    INTEGER DEFAULT 0,
+      created_at   TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+
   console.log('[migrate] Database ready');
 }
 

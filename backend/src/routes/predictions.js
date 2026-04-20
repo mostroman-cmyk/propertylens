@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db/db');
 const { predictAll } = require('../prediction/engine');
+const { triggerLearnAsync, triggerFullRetrainAsync } = require('../prediction/learner');
 
 const SELECT_PRED = `
   SELECT tx.*,
@@ -21,7 +22,28 @@ const SELECT_PRED = `
 router.post('/predict-all', async (req, res) => {
   try {
     const result = await predictAll();
+    // Log as a manual retrain event
+    try {
+      const H = result.counts.HIGH || 0, M = result.counts.MEDIUM || 0, L = result.counts.LOW || 0;
+      await db.query(
+        `INSERT INTO prediction_activity (event_type, tx_id, tx_desc, affected, high_count, medium_count, low_count)
+         VALUES ('manual_retrain', NULL, 'Full re-train triggered manually', $1, $2, $3, $4)`,
+        [result.total, H, M, L]
+      );
+    } catch {}
     res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Recent learning activity log
+router.get('/activity', async (req, res) => {
+  try {
+    const { rows } = await db.query(
+      'SELECT * FROM prediction_activity ORDER BY created_at DESC LIMIT 30'
+    );
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -69,6 +91,8 @@ router.post('/:id/accept', async (req, res) => {
 
     const result = await db.query(SELECT_PRED + ' WHERE tx.id=$1', [req.params.id]);
     res.json(result.rows[0]);
+    // Background: re-predict similar transactions now that this one is classified
+    triggerLearnAsync(parseInt(req.params.id), 'accept');
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -107,6 +131,8 @@ router.post('/bulk-accept', async (req, res) => {
       RETURNING id
     `, [ids]);
     res.json({ accepted: result.rowCount });
+    // Background: full retrain now that multiple transactions are classified
+    if (result.rowCount > 0) triggerFullRetrainAsync('bulk_accept');
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -127,6 +153,7 @@ router.post('/accept-all-high', async (req, res) => {
       RETURNING id
     `);
     res.json({ accepted: result.rowCount });
+    if (result.rowCount > 0) triggerFullRetrainAsync('accept_all_high');
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

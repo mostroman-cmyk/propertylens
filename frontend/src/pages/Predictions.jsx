@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence, bulkAcceptPredictions } from '../api';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { getProperties, getTenants, getPredictions, runPredictions, acceptPrediction, rejectPrediction, acceptAllHighConfidence, bulkAcceptPredictions, getPredictionActivity } from '../api';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -12,31 +12,147 @@ function groupByNormalized(txs) {
     if (!map.has(key)) map.set(key, []);
     map.get(key).push(tx);
   }
-  // Sort groups: largest first
   return Array.from(map.entries())
     .sort((a, b) => b[1].length - a[1].length)
     .map(([key, items]) => ({ key, items }));
+}
+
+function ExamplesPopover({ tx, onClose }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) onClose(); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [onClose]);
+
+  let examples = [];
+  try { examples = JSON.parse(tx.prediction_examples || '[]'); } catch {}
+
+  return (
+    <div ref={ref} style={{
+      position: 'absolute', zIndex: 1000, right: 0, top: '100%',
+      background: '#fff', border: '1px solid #E5E5E5', borderRadius: 4,
+      boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 14, minWidth: 360, maxWidth: 480,
+    }}>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
+        Why this prediction?
+      </div>
+      <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
+        {tx.prediction_reasoning}
+      </div>
+      {examples.length > 0 && (
+        <>
+          <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Contributing transactions
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+            <tbody>
+              {examples.map((ex, i) => (
+                <tr key={i} style={{ borderBottom: '1px solid #F0F0F0' }}>
+                  <td style={{ padding: '4px 6px', color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                      title={ex.description}>
+                    {ex.description || ex.normalized}
+                  </td>
+                  <td style={{ padding: '4px 6px', color: '#555', whiteSpace: 'nowrap' }}>{ex.category}</td>
+                  <td style={{ padding: '4px 6px', color: '#999', whiteSpace: 'nowrap', textAlign: 'right' }}>{ex.similarity}% match</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
+      )}
+      {examples.length === 0 && (
+        <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
+          This prediction was made by a fallback rule (keyword match or amount match), not by similarity to prior transactions.
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActivityLog({ activity }) {
+  if (!activity || activity.length === 0) return null;
+
+  const eventLabel = (type) => ({
+    manual_classify: 'Manual classify',
+    accept:          'Prediction accepted',
+    bulk_accept:     'Bulk accept',
+    accept_all_high: 'Accept all HIGH',
+    manual_retrain:  'Manual re-train',
+  }[type] || type);
+
+  return (
+    <div style={{ marginTop: 40, borderTop: '1px solid #E5E5E5', paddingTop: 24 }}>
+      <h2 className="section-title" style={{ marginBottom: 12 }}>Recent Learning Activity</h2>
+      <table className="tx-table">
+        <colgroup>
+          <col style={{ width: 140 }} />
+          <col style={{ width: 130 }} />
+          <col />
+          <col style={{ width: 70 }} />
+          <col style={{ width: 70 }} />
+          <col style={{ width: 70 }} />
+          <col style={{ width: 70 }} />
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Event</th>
+            <th>Transaction</th>
+            <th className="num">Similar</th>
+            <th className="num">HIGH</th>
+            <th className="num">MED</th>
+            <th className="num">LOW</th>
+          </tr>
+        </thead>
+        <tbody>
+          {activity.map(row => (
+            <tr key={row.id}>
+              <td className="mono nowrap" style={{ fontSize: 11 }}>
+                {new Date(row.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}{' '}
+                {new Date(row.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+              </td>
+              <td style={{ fontSize: 12, color: '#555' }}>{eventLabel(row.event_type)}</td>
+              <td className="col-desc" style={{ fontSize: 12 }} title={row.tx_desc}>{row.tx_desc || '—'}</td>
+              <td className="num mono" style={{ fontSize: 12 }}>{row.affected}</td>
+              <td className="num mono" style={{ fontSize: 12, color: row.high_count > 0 ? '#16A34A' : '#ccc' }}>{row.high_count}</td>
+              <td className="num mono" style={{ fontSize: 12, color: '#555' }}>{row.medium_count}</td>
+              <td className="num mono" style={{ fontSize: 12, color: row.low_count > 0 ? '#F59E0B' : '#ccc' }}>{row.low_count}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 export default function Predictions() {
   const [predictions, setPredictions] = useState([]);
   const [properties, setProperties]   = useState([]);
   const [tenants, setTenants]         = useState([]);
+  const [activity, setActivity]       = useState([]);
   const [loading, setLoading]         = useState(true);
   const [running, setRunning]         = useState(false);
   const [accepting, setAccepting]     = useState(false);
   const [bulkAccepting, setBulkAccepting] = useState(null);
   const [editModal, setEditModal]     = useState(null);
+  const [activePopover, setActivePopover] = useState(null); // txId with open popover
   const { toast, showToast } = useToast();
 
   const reload = useCallback(async () => {
-    const data = await getPredictions();
+    const [data, act] = await Promise.all([getPredictions(), getPredictionActivity()]);
     setPredictions(data);
+    setActivity(act);
   }, []);
 
   useEffect(() => {
-    Promise.all([getPredictions(), getProperties(), getTenants()])
-      .then(([pred, props, tens]) => { setPredictions(pred); setProperties(props); setTenants(tens); })
+    Promise.all([getPredictions(), getProperties(), getTenants(), getPredictionActivity()])
+      .then(([pred, props, tens, act]) => {
+        setPredictions(pred);
+        setProperties(props);
+        setTenants(tens);
+        setActivity(act);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -45,7 +161,10 @@ export default function Predictions() {
     try {
       const result = await runPredictions();
       await reload();
-      showToast(`Generated ${result.predicted} predictions (${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED) from ${result.total} uncategorized`);
+      showToast(
+        `Re-trained and re-predicted: ${result.predicted} transactions updated — ` +
+        `${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED, ${result.counts.LOW} LOW`
+      );
     } catch {
       showToast('Prediction failed');
     } finally {
@@ -72,6 +191,8 @@ export default function Predictions() {
       const result = await bulkAcceptPredictions(ids);
       setPredictions(prev => prev.filter(p => !ids.includes(p.id)));
       showToast(`Accepted ${result.accepted} predictions`);
+      // Reload activity after a short delay to let background retrain start
+      setTimeout(() => reload(), 2000);
     } catch {
       showToast('Failed to accept');
     } finally {
@@ -84,6 +205,7 @@ export default function Predictions() {
       await acceptPrediction(tx.id, overrides);
       setPredictions(prev => prev.filter(p => p.id !== tx.id));
       showToast('Accepted');
+      setTimeout(() => reload(), 2000);
     } catch {
       showToast('Failed to accept');
     }
@@ -133,7 +255,7 @@ export default function Predictions() {
         <h1 className="page-title">Predictions</h1>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-secondary" onClick={handleRunPredictions} disabled={running}>
-            {running ? 'Running...' : 'Run Predictions'}
+            {running ? 'Running...' : 'Re-train on all current classifications'}
           </button>
           {highCount > 0 && (
             <button className="btn-primary" onClick={handleAcceptAllHigh} disabled={accepting}>
@@ -158,7 +280,7 @@ export default function Predictions() {
 
       {predictions.length === 0 && (
         <div style={{ textAlign: 'center', color: '#888', padding: '48px 0', borderTop: '1px solid #E5E5E5' }}>
-          No pending predictions. Click "Run Predictions" to generate predictions for uncategorized transactions.
+          No pending predictions. Click "Re-train on all current classifications" to generate predictions.
         </div>
       )}
 
@@ -172,7 +294,6 @@ export default function Predictions() {
 
             {groups.map(({ key, items }) => (
               <div key={key} style={{ marginBottom: 24 }}>
-                {/* Group header */}
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: '#F5F5F5', border: '1px solid #E5E5E5', borderBottom: 'none', borderRadius: '2px 2px 0 0' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                     <span style={{ fontWeight: 600, fontSize: 13 }}>{items[0].predicted_category}</span>
@@ -195,14 +316,13 @@ export default function Predictions() {
                   )}
                 </div>
 
-                {/* Group rows */}
                 <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
                   <colgroup>
                     <col style={{ width: 90 }} />
                     <col />
                     <col style={{ width: 100 }} />
                     <col style={{ width: 220 }} />
-                    <col style={{ width: 90 }} />
+                    <col style={{ width: 110 }} />
                   </colgroup>
                   <tbody>
                     {items.map(tx => (
@@ -216,7 +336,7 @@ export default function Predictions() {
                           {tx.prediction_reasoning}
                         </td>
                         <td className="nowrap">
-                          <div style={{ display: 'flex', gap: 4 }}>
+                          <div style={{ display: 'flex', gap: 4, position: 'relative' }}>
                             <button
                               onClick={() => handleAccept(tx)}
                               style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
@@ -232,6 +352,16 @@ export default function Predictions() {
                               style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#666' }}
                               title="Edit then accept"
                             >✎</button>
+                            <div style={{ position: 'relative' }}>
+                              <button
+                                onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
+                                style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#999' }}
+                                title="Why this prediction?"
+                              >ⓘ</button>
+                              {activePopover === tx.id && (
+                                <ExamplesPopover tx={tx} onClose={() => setActivePopover(null)} />
+                              )}
+                            </div>
                           </div>
                         </td>
                       </tr>
@@ -277,6 +407,8 @@ export default function Predictions() {
           </div>
         </Modal>
       )}
+
+      <ActivityLog activity={activity} />
 
       <Toast message={toast} />
     </div>

@@ -29,6 +29,7 @@ export const resetAmbiguousRentMatches     = ()         => api.post('/transactio
 
 export const getPredictions           = ()         => api.get('/predictions').then(r => r.data);
 export const runPredictions           = ()         => api.post('/predictions/predict-all').then(r => r.data);
+export const getPredictionActivity    = ()         => api.get('/predictions/activity').then(r => r.data);
 export const acceptPrediction         = (id, data) => api.post(`/predictions/${id}/accept`, data || {}).then(r => r.data);
 export const rejectPrediction         = (id)       => api.post(`/predictions/${id}/reject`).then(r => r.data);
 export const acceptAllHighConfidence  = ()         => api.post('/predictions/accept-all-high').then(r => r.data);
