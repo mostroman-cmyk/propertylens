@@ -280,7 +280,81 @@ async function migrate() {
     )
   `);
 
+  // ── Payer-name matching infrastructure ──────────────────────────────────────
+
+  // Column: extracted sender name after payment-rail prefix (e.g. "BAILY ANDREW" from Zelle)
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS payer_name TEXT`);
+
+  // Table: confirmed payer_name → tenant_id mappings, built from manual assignments
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS payer_patterns (
+      id                SERIAL PRIMARY KEY,
+      payer_name        TEXT NOT NULL,
+      tenant_id         INTEGER NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+      confirmed_count   INTEGER NOT NULL DEFAULT 1,
+      last_confirmed_at TIMESTAMPTZ DEFAULT NOW(),
+      UNIQUE (payer_name, tenant_id)
+    )
+  `);
+  await db.query(`CREATE INDEX IF NOT EXISTS idx_payer_patterns_name ON payer_patterns (payer_name)`);
+
+  // IMPORTANT: Reset all normalized_descriptions so they are recomputed with the
+  // fixed normalization (which now correctly strips CONF# labels regardless of
+  // whether the ID is numeric-only or alphanumeric). This ensures "BAILY ANDREW CONF"
+  // artifacts from the old bug are replaced with clean "BAILY ANDREW" forms.
+  const { rows: normCount } = await db.query('SELECT COUNT(*) FROM transactions');
+  await db.query('UPDATE transactions SET normalized_description = NULL');
+  console.log(`[migrate] Reset normalized_description on ${normCount[0].count} transactions for recompute with fixed normalization`);
+
+  // Backfill normalized_description with corrected logic
+  const { normalizeDescription: nd, extractSenderName } = require('../prediction/engine');
+  const { rows: allTx } = await db.query('SELECT id, description, type FROM transactions');
+  let normFixed = 0, payerLearned = 0, patternLearned = 0;
+
+  for (const row of allTx) {
+    const newNorm = nd(row.description);
+    const payerName = row.type === 'income' ? extractSenderName(row.description) : null;
+    await db.query(
+      'UPDATE transactions SET normalized_description=$1, payer_name=$2 WHERE id=$3',
+      [newNorm, payerName || null, row.id]
+    );
+    normFixed++;
+  }
+  console.log(`[migrate] Recomputed normalized_description + payer_name for ${normFixed} transactions`);
+
+  // Learn payer patterns from existing income transactions that already have a tenant assigned
+  const { rows: assignedIncome } = await db.query(`
+    SELECT id, description, tenant_id FROM transactions
+    WHERE type = 'income' AND tenant_id IS NOT NULL AND payer_name IS NOT NULL
+  `);
+  for (const row of assignedIncome) {
+    const pn = extractSenderName(row.description);
+    if (!pn) continue;
+    try {
+      await db.query(
+        `INSERT INTO payer_patterns (payer_name, tenant_id, confirmed_count, last_confirmed_at)
+         VALUES ($1, $2, 1, NOW())
+         ON CONFLICT (payer_name, tenant_id)
+         DO UPDATE SET confirmed_count = payer_patterns.confirmed_count + 1, last_confirmed_at = NOW()`,
+        [pn, row.tenant_id]
+      );
+      patternLearned++;
+    } catch {}
+  }
+  console.log(`[migrate] Learned ${patternLearned} payer_patterns from ${assignedIncome.length} historical assignments`);
+
   console.log('[migrate] Database ready');
+
+  // Fire-and-forget: re-predict using updated payer patterns and fixed normalization
+  const { predictAll } = require('../prediction/engine');
+  setImmediate(async () => {
+    try {
+      const result = await predictAll();
+      console.log(`[migrate] Auto-predict after payer-name backfill: ${result.predicted} updated — ${JSON.stringify(result.counts)}`);
+    } catch (err) {
+      console.error('[migrate] Auto-predict failed:', err.message);
+    }
+  });
 }
 
 module.exports = migrate;

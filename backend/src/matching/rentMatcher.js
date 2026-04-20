@@ -1,5 +1,6 @@
 const db = require('../db/db');
 const { calculateRentMonth } = require('./rentMonth');
+const { extractSenderName } = require('../prediction/engine');
 
 const AMOUNT_EXACT_TOL   = 1;    // $1 tolerance for exact amount match
 const AMOUNT_PARTIAL_PCT = 0.10; // 10% tolerance for payer-pattern amount validation
@@ -26,7 +27,6 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-// Word-boundary match — "BAILY" matches "BAILY ANDREW" but not "ABAILY" or "BAILYTOWN"
 function wordMatch(haystack, needle) {
   if (!needle || needle.trim().length < 2) return false;
   try {
@@ -34,7 +34,6 @@ function wordMatch(haystack, needle) {
   } catch { return false; }
 }
 
-// All matchable components of a tenant name
 function nameComponents(tenantName) {
   const parts = tenantName.trim().split(/\s+/);
   const result = new Set([tenantName]);
@@ -44,8 +43,8 @@ function nameComponents(tenantName) {
     if (first.length > 2) result.add(first);
     if (last.length > 2) {
       result.add(last);
-      result.add(`${first[0]} ${last}`); // first initial + last name
-      result.add(`${last} ${first[0]}`); // last name + first initial
+      result.add(`${first[0]} ${last}`);
+      result.add(`${last} ${first[0]}`);
     }
   } else if (parts.length === 1 && parts[0].length > 2) {
     result.add(parts[0]);
@@ -61,13 +60,23 @@ function descMatchesTenantByName(description, tenant, aliasMap) {
   );
 }
 
-function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap) {
+// Also check if the extracted sender name matches a tenant name
+function payerNameMatchesTenant(payerName, tenant, aliasMap) {
+  if (!payerName) return false;
+  return descMatchesTenantByName(payerName, tenant, aliasMap);
+}
+
+function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap = new Map(), payerConflicts = new Set()) {
   const amount  = parseFloat(tx.amount);
   const desc    = tx.description || '';
   const dateStr = tx.date ? String(tx.date).slice(0, 10) : '';
+  const payerName = extractSenderName(desc);
 
-  // LAYER 1: Explicit name match (word-boundary, no amount constraint)
-  const nameMatches = tenants.filter(t => descMatchesTenantByName(desc, t, aliasMap));
+  // LAYER 1: Explicit name match (word-boundary, checks both raw description and extracted payer name)
+  const nameMatches = tenants.filter(t =>
+    descMatchesTenantByName(desc, t, aliasMap) ||
+    (payerName && payerNameMatchesTenant(payerName, t, aliasMap))
+  );
   if (nameMatches.length === 1) {
     const t = nameMatches[0];
     const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — matched by: [layer 1: name match] → assigning to ${t.name}`;
@@ -75,7 +84,6 @@ function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap) {
     return { tenant_id: t.id, match_confidence: 'exact', needs_review: false, matched_by: 'name', prediction_reasoning: reasoning };
   }
   if (nameMatches.length > 1) {
-    // Tiebreak by exact amount
     const exactAmt = nameMatches.filter(t => Math.abs(parseFloat(t.monthly_rent) - amount) <= AMOUNT_EXACT_TOL);
     if (exactAmt.length === 1) {
       const t = exactAmt[0];
@@ -104,7 +112,26 @@ function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap) {
     return { tenant_id: null, match_confidence: 'ambiguous', needs_review: true, prediction_reasoning: reasoning };
   }
 
-  // LAYER 3: Payer pattern learning with count thresholds
+  // LAYER 3a: Payer-name pattern match (full extracted sender name → confirmed tenant)
+  if (payerName) {
+    if (payerConflicts.has(payerName)) {
+      const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer_name "${payerName}" has conflicting tenant history — leaving blank, needs_review=true`;
+      console.log(reasoning);
+      return { tenant_id: null, match_confidence: 'ambiguous', needs_review: true, prediction_reasoning: reasoning };
+    }
+    const payerMatch = payerPatternMap.get(payerName);
+    if (payerMatch) {
+      const { tenant_id, confirmed_count } = payerMatch;
+      const tenant = tenants.find(t => t.id === tenant_id);
+      const confidence = confirmed_count >= 2 ? 'exact' : 'amount_only';
+      const needs_review = confirmed_count < 2;
+      const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer_name "${payerName}" (${confirmed_count} confirmed) → assigning to ${tenant?.name}`;
+      console.log(reasoning);
+      return { tenant_id, match_confidence: confidence, needs_review, matched_by: 'payer_name', prediction_reasoning: reasoning };
+    }
+  }
+
+  // LAYER 3b: Keyword pattern learning (fallback to individual keywords)
   const keywords = extractKeywords(desc);
   for (const kw of keywords) {
     if (patternConflicts.has(kw)) {
@@ -117,12 +144,12 @@ function matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap) {
       const tenant = tenants.find(t => t.id === tenant_id);
       if (tenant && Math.abs(parseFloat(tenant.monthly_rent) - amount) / Math.max(amount, 1) <= AMOUNT_PARTIAL_PCT) {
         if (match_count >= 3) {
-          const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer pattern "${kw}" (${match_count} past matches) → assigning to ${tenant.name}`;
+          const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer keyword "${kw}" (${match_count} past matches) → assigning to ${tenant.name}`;
           console.log(reasoning);
           return { tenant_id, match_confidence: 'exact', needs_review: false, matched_by: 'pattern', prediction_reasoning: reasoning };
         }
         if (match_count >= 2) {
-          const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer pattern "${kw}" (${match_count} past matches, medium confidence) → assigning to ${tenant.name}`;
+          const reasoning = `[rent-match] $${amount} on ${dateStr} — description: '${desc}' — payer keyword "${kw}" (${match_count} past matches, medium confidence) → assigning to ${tenant.name}`;
           console.log(reasoning);
           return { tenant_id, match_confidence: 'amount_only', needs_review: true, matched_by: 'pattern_medium', prediction_reasoning: reasoning };
         }
@@ -146,6 +173,32 @@ async function learnPattern(txId, tenantId, description) {
     if (!rows.length) return;
     desc = rows[0].description;
   }
+
+  // Primary: save full payer_name to payer_patterns table
+  const payerName = extractSenderName(desc);
+  if (payerName) {
+    try {
+      await db.query(
+        `INSERT INTO payer_patterns (payer_name, tenant_id, confirmed_count, last_confirmed_at)
+         VALUES ($1, $2, 1, NOW())
+         ON CONFLICT (payer_name, tenant_id)
+         DO UPDATE SET confirmed_count = payer_patterns.confirmed_count + 1, last_confirmed_at = NOW()`,
+        [payerName, tenantId]
+      );
+      console.log(`[matcher] Learned payer_name "${payerName}" → tenant ${tenantId}`);
+    } catch (err) {
+      console.error('[matcher] payer_patterns insert failed:', err.message);
+    }
+  }
+
+  // Also update payer_name on the transaction itself
+  if (payerName) {
+    try {
+      await db.query('UPDATE transactions SET payer_name=$1 WHERE id=$2', [payerName, txId]);
+    } catch {}
+  }
+
+  // Secondary: save individual keywords for backwards compat
   const keywords = extractKeywords(desc);
   for (const kw of keywords) {
     await db.query(
@@ -156,7 +209,9 @@ async function learnPattern(txId, tenantId, description) {
       [tenantId, kw]
     );
   }
-  if (keywords.length) console.log(`[matcher] Learned ${keywords.length} keywords for tenant ${tenantId}: ${keywords.join(', ')}`);
+  if (keywords.length || payerName) {
+    console.log(`[matcher] Learned ${keywords.length} keywords${payerName ? ` + payer_name "${payerName}"` : ''} for tenant ${tenantId}`);
+  }
 }
 
 async function autoMatchAll() {
@@ -172,18 +227,32 @@ async function autoMatchAll() {
     aliasMap.get(tenant_id).push(alias);
   }
 
-  // Build patternMap and detect conflicts (same keyword → different tenants)
-  const patternMap = new Map(); // keyword → { tenant_id, match_count }
+  // Build keyword patternMap and detect conflicts
+  const patternMap = new Map();
   const patternConflicts = new Set();
   for (const { tenant_id, pattern_keyword, match_count } of patterns) {
     if (patternMap.has(pattern_keyword)) {
-      if (patternMap.get(pattern_keyword).tenant_id !== tenant_id) {
-        patternConflicts.add(pattern_keyword);
-      }
+      if (patternMap.get(pattern_keyword).tenant_id !== tenant_id) patternConflicts.add(pattern_keyword);
     } else {
       patternMap.set(pattern_keyword, { tenant_id, match_count });
     }
   }
+
+  // Build payer_name patternMap and detect conflicts
+  const payerPatternMap = new Map(); // payer_name → {tenant_id, confirmed_count}
+  const payerConflicts  = new Set();
+  try {
+    const { rows: payerPatterns } = await db.query(
+      'SELECT payer_name, tenant_id, confirmed_count FROM payer_patterns ORDER BY confirmed_count DESC'
+    );
+    for (const { payer_name, tenant_id, confirmed_count } of payerPatterns) {
+      if (payerPatternMap.has(payer_name)) {
+        if (payerPatternMap.get(payer_name).tenant_id !== tenant_id) payerConflicts.add(payer_name);
+      } else {
+        payerPatternMap.set(payer_name, { tenant_id, confirmed_count });
+      }
+    }
+  } catch {} // payer_patterns table may not exist yet
 
   const { rows: transactions } = await db.query(`
     SELECT id, amount, description, date FROM transactions
@@ -193,7 +262,7 @@ async function autoMatchAll() {
   let cPattern = 0, cExact = 0, cAmountOnly = 0, cAmbiguous = 0, cNone = 0;
 
   for (const tx of transactions) {
-    const result = matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap);
+    const result = matchTransaction(tx, tenants, patternMap, patternConflicts, aliasMap, payerPatternMap, payerConflicts);
     let rent_month = null, needs_month_review = false;
     if (result.tenant_id) {
       ({ rent_month, needs_month_review } = calculateRentMonth(tx.date));
@@ -207,12 +276,12 @@ async function autoMatchAll() {
        rent_month, needs_month_review, result.prediction_reasoning || null, tx.id]
     );
 
-    // Auto-learn from name matches (not from pattern-triggered matches to avoid circular reinforcement)
+    // Auto-learn from name matches
     if ((result.matched_by === 'name' || result.matched_by === 'name_amount') && result.tenant_id) {
       await learnPattern(tx.id, result.tenant_id, tx.description);
     }
 
-    if (result.matched_by === 'pattern' || result.matched_by === 'pattern_medium') cPattern++;
+    if (result.matched_by === 'pattern' || result.matched_by === 'pattern_medium' || result.matched_by === 'payer_name') cPattern++;
     else if (result.match_confidence === 'exact')       cExact++;
     else if (result.match_confidence === 'amount_only') cAmountOnly++;
     else if (result.match_confidence === 'ambiguous')   cAmbiguous++;
@@ -220,7 +289,7 @@ async function autoMatchAll() {
   }
 
   const matched = cPattern + cExact + cAmountOnly;
-  console.log(`[matcher] pattern=${cPattern}, exact=${cExact}, amount_only=${cAmountOnly}, ambiguous=${cAmbiguous}, none=${cNone}`);
+  console.log(`[matcher] pattern/payer=${cPattern}, exact=${cExact}, amount_only=${cAmountOnly}, ambiguous=${cAmbiguous}, none=${cNone}`);
   return { pattern: cPattern, exact: cExact, amount_only: cAmountOnly, partial: 0, ambiguous: cAmbiguous, none: cNone, total: transactions.length, matched };
 }
 

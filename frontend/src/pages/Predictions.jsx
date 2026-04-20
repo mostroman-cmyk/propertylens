@@ -337,7 +337,14 @@ export default function Predictions() {
                         <td className="nowrap mono" style={{ fontSize: 11 }}>
                           {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                         </td>
-                        <td className="col-desc" title={tx.description} style={{ color: '#555' }}>{tx.description}</td>
+                        <td className="col-desc" title={tx.description} style={{ color: '#555' }}>
+                          {tx.description}
+                          {tx.payer_name && (
+                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', background: '#F0F0F0', color: '#555', padding: '1px 5px', borderRadius: 2, whiteSpace: 'nowrap', fontFamily: 'IBM Plex Mono, monospace' }}>
+                              {tx.payer_name}
+                            </span>
+                          )}
+                        </td>
                         <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                         <td style={{ color: '#888', fontSize: 12 }} title={tx.prediction_reasoning}>
                           {tx.prediction_reasoning}

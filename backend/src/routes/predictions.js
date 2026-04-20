@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db/db');
 const { predictAll } = require('../prediction/engine');
 const { triggerLearnAsync, triggerFullRetrainAsync } = require('../prediction/learner');
+const { learnPattern } = require('../matching/rentMatcher');
 
 const SELECT_PRED = `
   SELECT tx.*,
@@ -91,7 +92,10 @@ router.post('/:id/accept', async (req, res) => {
 
     const result = await db.query(SELECT_PRED + ' WHERE tx.id=$1', [req.params.id]);
     res.json(result.rows[0]);
-    // Background: re-predict similar transactions now that this one is classified
+    // Background: learn payer pattern if a tenant was assigned, then re-predict similar
+    if (finalTenantId) {
+      learnPattern(parseInt(req.params.id), finalTenantId, tx.description).catch(() => {});
+    }
     triggerLearnAsync(parseInt(req.params.id), 'accept');
   } catch (err) {
     res.status(500).json({ error: err.message });

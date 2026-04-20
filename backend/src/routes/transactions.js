@@ -83,9 +83,8 @@ router.put('/:id/assign-tenant', async (req, res) => {
          WHERE id=$5`,
         [tenant_id, confidence, rent_month, needs_month_review, req.params.id]
       );
-      if (learn_pattern) {
-        await learnPattern(req.params.id, tenant_id);
-      }
+      // Always learn from manual tenant assignments — builds payer_patterns for future predictions
+      await learnPattern(req.params.id, tenant_id);
     } else {
       await db.query(
         'UPDATE transactions SET tenant_id=NULL, match_confidence=NULL, needs_review=false, rent_month=NULL, needs_month_review=false WHERE id=$1',
