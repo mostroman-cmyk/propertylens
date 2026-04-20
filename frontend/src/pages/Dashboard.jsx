@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
 import { formatMoney, formatDate } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 
 const FILTER_OPTIONS = [
   { key: '7d',         label: '7 Days' },
@@ -506,15 +507,21 @@ export default function Dashboard() {
                 ))}
                 {transactions.length === 0 && !txLoading && (
                   <tr>
-                    <td colSpan={7} style={{ textAlign: 'center', color: '#888', padding: 24 }}>
-                      No transactions in this range.{' '}
-                      {dateFilter !== 'all' && (
-                        <button
-                          style={{ background: 'none', border: 'none', color: '#666', textDecoration: 'underline', cursor: 'pointer', padding: 0, fontSize: 13 }}
-                          onClick={() => handleFilterClick('all')}
-                        >
-                          Show all time
-                        </button>
+                    <td colSpan={7} style={{ padding: 0 }}>
+                      {allTransactions.length === 0 ? (
+                        <EmptyState
+                          icon="bank"
+                          title="No transactions yet"
+                          description="Connect your bank account to start importing rent payments and expenses."
+                          primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
+                        />
+                      ) : (
+                        <EmptyState
+                          icon="search"
+                          title="No transactions in this range"
+                          description={`Nothing found for the selected period.`}
+                          primaryAction={dateFilter !== 'all' ? { label: 'Show all time', onClick: () => handleFilterClick('all') } : null}
+                        />
                       )}
                     </td>
                   </tr>

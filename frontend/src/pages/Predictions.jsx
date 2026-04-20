@@ -6,6 +6,7 @@ import {
   getSimilarTraining, getMisclassifiedPatterns, bulkFixPredictions,
 } from '../api';
 import { formatMoney, formatDate } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -635,9 +636,13 @@ export default function Predictions() {
       </div>
 
       {predictions.length === 0 && (
-        <div style={{ textAlign: 'center', color: '#888', padding: '48px 0', borderTop: '1px solid #E5E5E5' }}>
-          No pending predictions. Click "Re-train &amp; Re-predict" to generate predictions.
-        </div>
+        <EmptyState
+          icon="check"
+          title="All caught up"
+          description="No predictions waiting for review. New transactions will appear here after each sync."
+          primaryAction={{ label: 'Sync Transactions', onClick: async () => { await handleRunPredictions(); } }}
+          secondaryAction={{ label: 'Re-train & Re-predict', onClick: handleRunPredictions }}
+        />
       )}
 
       {confidenceTiers.map(({ label, txs }) => {

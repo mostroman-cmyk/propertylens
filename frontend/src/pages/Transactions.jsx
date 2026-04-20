@@ -4,6 +4,7 @@ import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 import { formatMoney, formatDate } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
@@ -264,7 +265,11 @@ export default function Transactions() {
   });
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
+  if (error) return (
+    <EmptyState icon="warning" title="Something went wrong"
+      description={`Could not load transactions. ${error}`}
+      primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }} />
+  );
 
   const income    = transactions.filter(t => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
   const expenses  = Math.abs(transactions.filter(t => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0));
@@ -343,9 +348,11 @@ export default function Transactions() {
       )}
 
       {isReviewTab && needsRentReview === 0 && (
-        <div style={{ padding: '24px', textAlign: 'center', color: '#666', fontSize: 14, border: '1px solid #E5E5E5', borderRadius: 4, margin: '8px 0' }}>
-          No rent deposits need review — all income has been matched or is unambiguous.
-        </div>
+        <EmptyState
+          icon="check"
+          title="Nothing to review"
+          description="All income deposits have been matched or are unambiguous. Come back after the next sync."
+        />
       )}
 
       {isReviewTab && needsRentReview > 0 && (
@@ -486,7 +493,31 @@ export default function Transactions() {
             );
           })}
           {filtered.length === 0 && !isReviewTab && (
-            <tr><td colSpan={isReviewTab ? 10 : 9} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
+            <tr>
+              <td colSpan={9} style={{ padding: 0 }}>
+                {transactions.length === 0 ? (
+                  <EmptyState
+                    icon="bank"
+                    title="No transactions yet"
+                    description="Connect your bank account to import transaction history."
+                    primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
+                  />
+                ) : filter === 'unmatched' ? (
+                  <EmptyState
+                    icon="check"
+                    title="All rent payments matched"
+                    description="Every income deposit has been matched to a tenant."
+                  />
+                ) : (
+                  <EmptyState
+                    icon="search"
+                    title="No transactions match these filters"
+                    description="Try adjusting or clearing the active filter."
+                    primaryAction={{ label: 'Show all transactions', onClick: () => setFilter('all') }}
+                  />
+                )}
+              </td>
+            </tr>
           )}
         </tbody>
       </table>

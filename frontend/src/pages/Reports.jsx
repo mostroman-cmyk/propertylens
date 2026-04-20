@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getPropertyPL } from '../api';
 import { formatMoney } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 
 const ALLOCATION_LABELS = {
   equal:         'Equal split',
@@ -28,7 +29,11 @@ export default function Reports() {
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (error)   return <div className="error">Error: {error}</div>;
+  if (error) return (
+    <EmptyState icon="warning" title="Something went wrong"
+      description={`Could not load report data. ${error}`}
+      primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }} />
+  );
 
   const { allocation_method, portfolio_expenses, properties } = data;
   const totalNet = properties.reduce((s, p) => s + p.net, 0);
@@ -71,7 +76,12 @@ export default function Reports() {
       </h2>
 
       {properties.length === 0 ? (
-        <div style={{ textAlign: 'center', color: '#888', padding: '48px 0' }}>No properties found.</div>
+        <EmptyState
+          icon="chart"
+          title="No data for this period"
+          description="No transactions found for the selected year. Try a different year or connect a bank account."
+          primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
+        />
       ) : (
         <table className="tx-table" style={{ tableLayout: 'auto' }}>
           <thead>

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getProperties, getTenants, createProperty, updateProperty } from '../api';
 import { formatMoney } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -62,7 +63,11 @@ export default function Properties() {
   };
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
+  if (error) return (
+    <EmptyState icon="warning" title="Something went wrong"
+      description={`Could not load properties. ${error}`}
+      primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }} />
+  );
 
   return (
     <div>
@@ -70,6 +75,15 @@ export default function Properties() {
         <h1 className="page-title">Properties</h1>
         <button className="btn-primary" onClick={openAdd}>+ Add Property</button>
       </div>
+
+      {properties.length === 0 && (
+        <EmptyState
+          icon="house"
+          title="Add your first property"
+          description="Start tracking your rental income by adding a property and its units."
+          primaryAction={{ label: '+ Add Property', onClick: openAdd }}
+        />
+      )}
 
       {properties.map(prop => {
         const propTenants = tenants.filter(t => t.property_id === prop.id);

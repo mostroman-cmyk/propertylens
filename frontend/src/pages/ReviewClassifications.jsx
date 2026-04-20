@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, bulkUpdateTransactions } from '../api';
 import { formatMoney, formatDate } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
@@ -105,7 +106,11 @@ export default function ReviewClassifications() {
   };
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (error)   return <div className="error">Error: {error}</div>;
+  if (error) return (
+    <EmptyState icon="warning" title="Something went wrong"
+      description={`Could not load transactions. ${error}`}
+      primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }} />
+  );
 
   const total       = transactions.length;
   const categorized = transactions.filter(t => !['Other', 'Other Income'].includes(t.category)).length;
@@ -367,7 +372,39 @@ export default function ReviewClassifications() {
             );
           })}
           {filtered.length === 0 && (
-            <tr><td colSpan={9} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No transactions match this filter.</td></tr>
+            <tr>
+              <td colSpan={9} style={{ padding: 0 }}>
+                {total === 0 ? (
+                  <EmptyState
+                    icon="bank"
+                    title="No transactions yet"
+                    description="Connect your bank account to start importing transaction history."
+                    primaryAction={{ label: 'Go to Settings', onClick: () => window.location.href = '/settings' }}
+                  />
+                ) : uncategorized === 0 && !search && filterCategory === 'All' && filterProperty === 'All' && filterType === 'All' ? (
+                  <EmptyState
+                    icon="check"
+                    title="All transactions classified"
+                    description="Every transaction has a category, property, and tenant assigned. Great work."
+                    primaryAction={{ label: 'View Dashboard', onClick: () => window.location.href = '/' }}
+                  />
+                ) : search ? (
+                  <EmptyState
+                    icon="search"
+                    title={`No matches for "${search}"`}
+                    description="Try a different search term or clear the filters."
+                    primaryAction={{ label: 'Clear search', onClick: () => setSearch('') }}
+                  />
+                ) : (
+                  <EmptyState
+                    icon="search"
+                    title="No transactions match these filters"
+                    description="Try adjusting the active filters."
+                    primaryAction={{ label: 'Clear all filters', onClick: () => { setFilterCategory('All'); setFilterProperty('All'); setFilterType('All'); setFilterConfidence('All'); setSearch(''); setSimilarFilter(null); } }}
+                  />
+                )}
+              </td>
+            </tr>
           )}
         </tbody>
       </table>

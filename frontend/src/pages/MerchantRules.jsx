@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getProperties, getTenants, getMerchantRules, createMerchantRule, updateMerchantRule, deleteMerchantRule, runPredictions } from '../api';
 import { formatMoney } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -276,8 +277,12 @@ export default function MerchantRules() {
           ))}
           {rules.length === 0 && (
             <tr>
-              <td colSpan={8} style={{ textAlign: 'center', color: '#888', padding: 32 }}>
-                No rules yet. Add one above — e.g. "JMJ MTG GROUP" at $1,618.33 → 8971 Singing Wood.
+              <td colSpan={8} style={{ padding: 0 }}>
+                <EmptyState
+                  icon="list"
+                  title="No merchant rules yet"
+                  description='Lock a merchant + amount to a specific property. e.g. "JMJ MTG GROUP" at $1,618.33 → 8971 Singing Wood.'
+                />
               </td>
             </tr>
           )}

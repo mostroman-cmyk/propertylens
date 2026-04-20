@@ -2,6 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings, api, syncOneConnection, disconnectBank, removeConnectionTransactions, mergeDuplicateConnections } from '../api';
 import { useAuth } from '../context/AuthContext';
 import { formatDate } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
 import LegacyCleanup from '../components/LegacyCleanup';
@@ -568,7 +569,12 @@ export default function Settings() {
         )}
 
         {connections.length === 0 ? (
-          <p style={{ color: '#888', fontSize: 13 }}>No banks connected yet.</p>
+          <EmptyState
+            icon="bank"
+            title="No bank connected"
+            description="Connect your bank account via Plaid to auto-import transactions."
+            primaryAction={null}
+          />
         ) : (
           connections.map(conn => {
             const accounts = connectionAccounts[conn.id] || [];

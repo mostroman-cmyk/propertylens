@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getCategorizationRules, createCategorizationRule, deleteCategorizationRule, bulkCategorize } from '../api';
 import Toast, { useToast } from '../components/Toast';
+import EmptyState from '../components/EmptyState';
 
 const CATEGORIES = ['Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Legal', 'Software', 'Professional Services', 'Other Income', 'Other'];
 const EMPTY_FORM = { keyword: '', category: 'Other', type: 'expense', priority: '0', property_scope: 'single' };
@@ -152,7 +153,15 @@ export default function CategorizationRules() {
             </tr>
           ))}
           {rules.length === 0 && (
-            <tr><td colSpan={6} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No rules yet. Add one above.</td></tr>
+            <tr>
+              <td colSpan={6} style={{ padding: 0 }}>
+                <EmptyState
+                  icon="list"
+                  title="No rules yet"
+                  description='Rules auto-categorize transactions by keyword. e.g. "HOME DEPOT" → Repairs.'
+                />
+              </td>
+            </tr>
           )}
         </tbody>
       </table>

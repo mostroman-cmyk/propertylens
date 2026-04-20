@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { getTenants, getProperties, createTenant, updateTenant, getTenantAliases, addTenantAlias, deleteTenantAlias } from '../api';
 import { formatMoney } from '../utils/format';
+import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -99,7 +100,11 @@ export default function Tenants() {
   };
 
   if (loading) return <div className="loading">Loading...</div>;
-  if (error) return <div className="error">Error: {error}</div>;
+  if (error) return (
+    <EmptyState icon="warning" title="Something went wrong"
+      description={`Could not load tenants. ${error}`}
+      primaryAction={{ label: 'Retry', onClick: () => window.location.reload() }} />
+  );
 
   return (
     <div>
@@ -108,7 +113,17 @@ export default function Tenants() {
         <button className="btn-primary" onClick={openAdd}>+ Add Tenant</button>
       </div>
 
-      <table>
+      {tenants.length === 0 && (
+        <EmptyState
+          icon="person"
+          title="No tenants yet"
+          description="Add tenants and their monthly rent to track rent collection automatically."
+          primaryAction={{ label: '+ Add Tenant', onClick: openAdd }}
+          secondaryAction={properties.length === 0 ? { label: 'Add a property first →', href: '/properties' } : null}
+        />
+      )}
+
+      {tenants.length > 0 && <table>
         <thead>
           <tr><th>Name</th><th>Property</th><th>Unit</th><th className="num">Monthly Rent</th><th></th></tr>
         </thead>
@@ -125,7 +140,7 @@ export default function Tenants() {
             </tr>
           ))}
         </tbody>
-      </table>
+      </table>}
 
       {modal !== null && (
         <Modal
