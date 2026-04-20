@@ -69,7 +69,7 @@ router.get('/', async (req, res) => {
 
 // Accept a prediction — optionally override predicted values in body
 router.post('/:id/accept', async (req, res) => {
-  const { category, property_id, tenant_id } = req.body;
+  const { category, property_id, tenant_id, property_scope } = req.body;
   try {
     const { rows } = await db.query('SELECT * FROM transactions WHERE id=$1', [req.params.id]);
     if (!rows.length) return res.status(404).json({ error: 'Not found' });
@@ -78,7 +78,7 @@ router.post('/:id/accept', async (req, res) => {
     const finalCategory   = category    ?? tx.predicted_category;
     const finalPropertyId = property_id !== undefined ? (property_id || null) : tx.predicted_property_id;
     const finalTenantId   = tenant_id   !== undefined ? (tenant_id   || null) : tx.predicted_tenant_id;
-    const finalScope      = tx.predicted_property_scope || 'single';
+    const finalScope      = property_scope !== undefined ? property_scope : (tx.predicted_property_scope || 'single');
     const effectivePropertyId = finalScope === 'portfolio' ? null : finalPropertyId;
 
     await db.query(`

@@ -59,7 +59,12 @@ export default function ReviewClassifications() {
       } else if (field === 'tenant_id') {
         updated = await assignTenant(tx.id, { tenant_id: value ? parseInt(value) : null });
       } else if (field === 'property_id') {
-        updated = await updateTransaction(tx.id, { category: tx.category, type: tx.type, property_id: value || null });
+        const isPortfolio = value === 'portfolio';
+        updated = await updateTransaction(tx.id, {
+          category: tx.category, type: tx.type,
+          property_id: isPortfolio ? null : (value || null),
+          property_scope: isPortfolio ? 'portfolio' : 'single',
+        });
       }
       if (updated) setTransactions(txs => txs.map(t => t.id === tx.id ? { ...t, ...updated } : t));
       showToast('Updated');
@@ -110,7 +115,10 @@ export default function ReviewClassifications() {
   let filtered = transactions;
   if (similarFilter)               filtered = filtered.filter(tx => extractMerchant(tx.description) === similarFilter);
   if (filterCategory !== 'All')    filtered = filtered.filter(tx => tx.category === filterCategory);
-  if (filterProperty !== 'All')    filtered = filtered.filter(tx => String(tx.property_id) === filterProperty);
+  if (filterProperty !== 'All') {
+    if (filterProperty === 'portfolio') filtered = filtered.filter(tx => tx.property_scope === 'portfolio');
+    else filtered = filtered.filter(tx => String(tx.property_id) === filterProperty);
+  }
   if (filterType     !== 'All')    filtered = filtered.filter(tx => tx.type === filterType);
   if (filterConfidence !== 'All') {
     if (filterConfidence === 'none') filtered = filtered.filter(tx => !tx.match_confidence);
@@ -162,6 +170,8 @@ export default function ReviewClassifications() {
         </select>
         <select className="form-input form-input-sm" value={filterProperty} onChange={e => setFilterProperty(e.target.value)}>
           <option value="All">All properties</option>
+          <option value="portfolio">🏘 ALL PROPERTIES (Portfolio)</option>
+          <option disabled>──────────────</option>
           {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
         </select>
         <select className="form-input form-input-sm" value={filterType} onChange={e => setFilterType(e.target.value)}>
@@ -297,20 +307,24 @@ export default function ReviewClassifications() {
                       autoFocus
                       className="form-input"
                       style={{ height: 24, padding: '0 4px', fontSize: 12 }}
-                      value={tx.property_id || ''}
+                      value={tx.property_scope === 'portfolio' ? 'portfolio' : (tx.property_id ? String(tx.property_id) : '')}
                       onChange={e => handleInlineEdit(tx, 'property_id', e.target.value)}
                       onBlur={() => setEditingCell(null)}
                     >
-                      <option value="">— None —</option>
+                      <option value="">— Select Property —</option>
+                      <option value="portfolio">🏘 ALL PROPERTIES (Portfolio)</option>
+                      <option disabled>──────────────</option>
                       {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   ) : (
                     <span
                       onClick={() => setEditingCell({ txId: tx.id, field: 'property_id' })}
-                      style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3, color: tx.property_name ? '#000' : '#ccc' }}
+                      style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3, color: (tx.property_name || tx.property_scope === 'portfolio') ? '#000' : '#ccc' }}
                       title="Click to assign property"
                     >
-                      {tx.property_name || '—'}
+                      {tx.property_scope === 'portfolio'
+                        ? <span style={{ fontStyle: 'italic', fontVariant: 'small-caps', fontWeight: 600, fontSize: 11, color: '#444' }}>🏘 All Properties</span>
+                        : (tx.property_name || '—')}
                     </span>
                   )}
                 </td>

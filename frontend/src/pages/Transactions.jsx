@@ -524,18 +524,18 @@ export default function Transactions() {
             <label>Property</label>
             <select
               className="form-input"
-              value={form.property_scope === 'portfolio' ? '__portfolio__' : (form.property_id || '')}
+              value={form.property_scope === 'portfolio' ? 'portfolio' : (form.property_id ? String(form.property_id) : '')}
               onChange={e => {
-                if (e.target.value === '__portfolio__') {
+                if (e.target.value === 'portfolio') {
                   setForm(f => ({ ...f, property_scope: 'portfolio', property_id: '' }));
                 } else {
                   setForm(f => ({ ...f, property_scope: 'single', property_id: e.target.value }));
                 }
               }}
             >
-              <option value="__portfolio__">🏘 All Properties (Portfolio)</option>
+              <option value="">— Select Property —</option>
+              <option value="portfolio">🏘 ALL PROPERTIES (Portfolio)</option>
               <option disabled>──────────────</option>
-              <option value="">— None / Untagged —</option>
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>

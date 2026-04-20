@@ -224,17 +224,24 @@ export default function Predictions() {
   const openEdit = (tx) => {
     setEditModal({
       tx,
-      category:    tx.predicted_category || '',
-      property_id: tx.predicted_property_id ? String(tx.predicted_property_id) : '',
-      tenant_id:   tx.predicted_tenant_id  ? String(tx.predicted_tenant_id)    : '',
+      category:       tx.predicted_category || '',
+      property_scope: tx.predicted_property_scope || 'single',
+      property_id:    tx.predicted_property_id ? String(tx.predicted_property_id) : '',
+      tenant_id:      tx.predicted_tenant_id  ? String(tx.predicted_tenant_id)    : '',
     });
   };
 
   const handleEditAccept = async () => {
     const overrides = {};
-    if (editModal.category)    overrides.category    = editModal.category;
-    if (editModal.property_id) overrides.property_id = parseInt(editModal.property_id);
-    if (editModal.tenant_id)   overrides.tenant_id   = parseInt(editModal.tenant_id);
+    if (editModal.category) overrides.category = editModal.category;
+    if (editModal.property_scope === 'portfolio') {
+      overrides.property_scope = 'portfolio';
+      overrides.property_id = null;
+    } else if (editModal.property_id) {
+      overrides.property_scope = 'single';
+      overrides.property_id = parseInt(editModal.property_id);
+    }
+    if (editModal.tenant_id) overrides.tenant_id = parseInt(editModal.tenant_id);
     await handleAccept(editModal.tx, overrides);
     setEditModal(null);
   };
@@ -393,8 +400,20 @@ export default function Predictions() {
           </div>
           <div className="form-group">
             <label>Property</label>
-            <select className="form-input" value={editModal.property_id} onChange={e => setEditModal(m => ({ ...m, property_id: e.target.value }))}>
-              <option value="">— None —</option>
+            <select
+              className="form-input"
+              value={editModal.property_scope === 'portfolio' ? 'portfolio' : (editModal.property_id || '')}
+              onChange={e => {
+                if (e.target.value === 'portfolio') {
+                  setEditModal(m => ({ ...m, property_scope: 'portfolio', property_id: '' }));
+                } else {
+                  setEditModal(m => ({ ...m, property_scope: 'single', property_id: e.target.value }));
+                }
+              }}
+            >
+              <option value="">— Select Property —</option>
+              <option value="portfolio">🏘 ALL PROPERTIES (Portfolio)</option>
+              <option disabled>──────────────</option>
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
