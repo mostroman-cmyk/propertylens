@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
 import { formatMoney, formatDate } from '../utils/format';
+import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
 
 const FILTER_OPTIONS = [
@@ -341,9 +342,17 @@ export default function Dashboard() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn-secondary" onClick={handleSync} disabled={syncing || fullResyncing}>
             {syncing ? 'Syncing...' : 'Sync Transactions'}
+          </button>
+          <button
+            className="btn-secondary"
+            onClick={() => downloadFilteredTransactionsCSV(transactions, periodLabel.toLowerCase().replace(/\s+/g, '_'))}
+            disabled={transactions.length === 0}
+            title={`Export ${transactions.length} transactions for the current period`}
+          >
+            Export Period CSV
           </button>
           <button className="btn-primary" onClick={handleFullResync} disabled={syncing || fullResyncing} title="Clear saved sync position and re-import all available history from Plaid (up to 24 months)">
             {fullResyncing ? 'Importing history...' : 'Full Re-Sync (Pull Complete History)'}

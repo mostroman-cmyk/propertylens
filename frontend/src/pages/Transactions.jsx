@@ -4,6 +4,7 @@ import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 import { formatMoney, formatDate } from '../utils/format';
+import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
@@ -293,6 +294,17 @@ export default function Transactions() {
               Reset Ambiguous Tenant Assignments
             </button>
           )}
+          <button
+            className="btn-secondary"
+            onClick={() => {
+              const label = filter !== 'all' ? `${filter}_filtered` : 'all';
+              downloadFilteredTransactionsCSV(filtered, label);
+            }}
+            title={`Export ${filtered.length} visible transaction${filtered.length !== 1 ? 's' : ''} to CSV`}
+            disabled={filtered.length === 0}
+          >
+            Export Visible ({filtered.length})
+          </button>
         </div>
       </div>
 

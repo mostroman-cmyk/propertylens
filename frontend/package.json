@@ -12,11 +12,16 @@
   },
   "dependencies": {
     "axios": "^1.15.0",
+    "file-saver": "^2.0.5",
+    "jspdf": "^4.2.1",
+    "jspdf-autotable": "^5.0.7",
+    "jszip": "^3.10.1",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-plaid-link": "^4.1.1",
     "react-router-dom": "^7.14.1",
-    "serve": "^14.2.6"
+    "serve": "^14.2.6",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
