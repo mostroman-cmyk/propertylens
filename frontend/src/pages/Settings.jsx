@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings, api, syncOneConnection, disconnectBank, removeConnectionTransactions, mergeDuplicateConnections } from '../api';
 import { useAuth } from '../context/AuthContext';
+import { formatDate } from '../utils/format';
 import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
 import LegacyCleanup from '../components/LegacyCleanup';
@@ -42,19 +43,6 @@ function buildSummary(s) {
   return `Sending on the ${ordinal(parseInt(s.alert_day || '5'))} of each month at ${timeStr} to ${email}`;
 }
 
-function fmtRelative(dateStr) {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  const diff = Date.now() - d.getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 2) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return d.toLocaleDateString();
-}
 
 export default function Settings() {
   const [settings, setSettings] = useState(null);
@@ -587,7 +575,6 @@ export default function Settings() {
             const enabledAccounts = accounts.filter(a => (conn.enabled_account_ids || []).includes(a.account_id));
             const isMenuOpen = menuOpen === conn.id;
             const isSyncingThis = perConnSyncing[conn.id];
-            const synced = fmtRelative(conn.last_synced_at);
 
             return (
               <div
@@ -604,8 +591,8 @@ export default function Settings() {
                     <div style={{ fontSize: 12, color: '#E30613', marginBottom: 3 }}>No accounts selected</div>
                   )}
                   <div style={{ fontSize: 11, color: '#999', fontFamily: 'IBM Plex Mono, monospace' }}>
-                    Connected {new Date(conn.created_at).toLocaleDateString()}
-                    {synced && ` · Synced ${synced}`}
+                    Connected {formatDate(conn.created_at)}
+                    {conn.last_synced_at && ` · Synced ${formatDate(conn.last_synced_at, 'relative')}`}
                     {conn.tx_count > 0 && ` · ${conn.tx_count} transactions`}
                   </div>
                 </div>

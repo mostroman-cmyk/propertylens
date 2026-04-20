@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getProperties, getTenants, getMerchantRules, createMerchantRule, updateMerchantRule, deleteMerchantRule, runPredictions } from '../api';
+import { formatMoney } from '../utils/format';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -252,7 +253,7 @@ export default function MerchantRules() {
                 </code>
               </td>
               <td className="num mono" style={{ fontSize: 12 }}>
-                {rule.amount != null ? `$${parseFloat(rule.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : <span style={{ color: '#bbb' }}>any</span>}
+                {rule.amount != null ? formatMoney(rule.amount) : <span style={{ color: '#bbb' }}>any</span>}
               </td>
               <td className="num mono" style={{ fontSize: 11, color: '#888' }}>
                 ±${parseFloat(rule.amount_tolerance || 2).toFixed(0)}

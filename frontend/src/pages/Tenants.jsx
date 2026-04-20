@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getTenants, getProperties, createTenant, updateTenant, getTenantAliases, addTenantAlias, deleteTenantAlias } from '../api';
+import { formatMoney } from '../utils/format';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -117,7 +118,7 @@ export default function Tenants() {
               <td>{t.name}</td>
               <td>{t.property_name}</td>
               <td className="nowrap">{t.unit}</td>
-              <td className="num mono">${parseFloat(t.monthly_rent).toLocaleString()}</td>
+              <td className="num mono">{formatMoney(t.monthly_rent)}</td>
               <td className="nowrap">
                 <button className="btn-edit" onClick={() => openEdit(t)}>Edit</button>
               </td>

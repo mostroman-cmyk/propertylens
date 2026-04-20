@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getPropertyPL } from '../api';
+import { formatMoney } from '../utils/format';
 
 const ALLOCATION_LABELS = {
   equal:         'Equal split',
@@ -46,19 +47,19 @@ export default function Reports() {
       <div className="kpi-row" style={{ marginBottom: 24 }}>
         <div className="kpi-item">
           <div className="kpi-label">Total Income</div>
-          <div className="kpi-value">${totalIncome.toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(totalIncome)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Property Expenses</div>
-          <div className="kpi-value muted">${totalSpecific.toLocaleString()}</div>
+          <div className="kpi-value muted">{formatMoney(totalSpecific)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Portfolio Expenses</div>
-          <div className="kpi-value muted">${portfolio_expenses.toLocaleString()}</div>
+          <div className="kpi-value muted">{formatMoney(portfolio_expenses)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Net</div>
-          <div className={`kpi-value${totalNet < 0 ? ' negative' : ''}`}>${totalNet.toLocaleString()}</div>
+          <div className={`kpi-value${totalNet < 0 ? ' negative' : ''}`}>{formatMoney(totalNet)}</div>
         </div>
       </div>
 
@@ -87,14 +88,14 @@ export default function Reports() {
             {properties.map(p => (
               <tr key={p.id}>
                 <td style={{ fontWeight: 600 }}>{p.name}</td>
-                <td className="num mono">${p.income.toLocaleString()}</td>
-                <td className="num mono" style={{ color: '#666' }}>${p.specific_expenses.toLocaleString()}</td>
+                <td className="num mono">{formatMoney(p.income)}</td>
+                <td className="num mono" style={{ color: '#666' }}>{formatMoney(p.specific_expenses)}</td>
                 {allocation_method !== 'unallocated' && (
                   <td className="num mono" style={{ color: '#888', fontStyle: 'italic' }}>
-                    ${p.portfolio_allocated.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                    {formatMoney(p.portfolio_allocated)}
                   </td>
                 )}
-                <td className={`num mono${p.net < 0 ? ' negative' : ''}`}>${p.net.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+                <td className={`num mono${p.net < 0 ? ' negative' : ''}`}>{formatMoney(p.net)}</td>
                 <td style={{ color: '#888' }}>{p.tenant_count}</td>
               </tr>
             ))}
@@ -102,18 +103,18 @@ export default function Reports() {
           <tfoot>
             <tr style={{ borderTop: '2px solid #000', fontWeight: 700 }}>
               <td>Total</td>
-              <td className="num mono">${totalIncome.toLocaleString()}</td>
-              <td className="num mono">${totalSpecific.toLocaleString()}</td>
+              <td className="num mono">{formatMoney(totalIncome)}</td>
+              <td className="num mono">{formatMoney(totalSpecific)}</td>
               {allocation_method !== 'unallocated' && (
-                <td className="num mono">${portfolio_expenses.toLocaleString()}</td>
+                <td className="num mono">{formatMoney(portfolio_expenses)}</td>
               )}
-              <td className={`num mono${totalNet < 0 ? ' negative' : ''}`}>${totalNet.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
+              <td className={`num mono${totalNet < 0 ? ' negative' : ''}`}>{formatMoney(totalNet)}</td>
               <td></td>
             </tr>
             {allocation_method === 'unallocated' && portfolio_expenses > 0 && (
               <tr style={{ color: '#666', fontStyle: 'italic' }}>
                 <td colSpan={5} style={{ paddingTop: 8, fontSize: 12 }}>
-                  + ${portfolio_expenses.toLocaleString()} portfolio-wide expenses not allocated to any property
+                  + {formatMoney(portfolio_expenses)} portfolio-wide expenses not allocated to any property
                 </td>
               </tr>
             )}

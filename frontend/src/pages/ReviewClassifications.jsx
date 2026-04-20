@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTransactions, getProperties, getTenants, updateTransaction, assignTenant, bulkUpdateTransactions } from '../api';
+import { formatMoney, formatDate } from '../utils/format';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
 
@@ -272,10 +273,10 @@ export default function ReviewClassifications() {
                   />
                 </td>
                 <td className="nowrap mono" style={{ fontSize: 11 }}>
-                  {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                  {formatDate(tx.date)}
                 </td>
                 <td className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
-                <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
                 <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
 
                 <td className="nowrap">

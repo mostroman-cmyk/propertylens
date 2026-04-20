@@ -3,6 +3,7 @@ import { getTransactions, getProperties, getTenants, updateTransaction, assignTe
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
+import { formatMoney, formatDate } from '../utils/format';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
@@ -293,15 +294,15 @@ export default function Transactions() {
       <div className="kpi-row">
         <div className="kpi-item">
           <div className="kpi-label">Total Income</div>
-          <div className="kpi-value">${income.toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(income)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Total Expenses</div>
-          <div className="kpi-value">${expenses.toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(expenses)}</div>
         </div>
         <div className="kpi-item">
           <div className="kpi-label">Net</div>
-          <div className={`kpi-value${income - expenses < 0 ? ' negative' : ''}`}>${(income - expenses).toLocaleString()}</div>
+          <div className={`kpi-value${income - expenses < 0 ? ' negative' : ''}`}>{formatMoney(income - expenses)}</div>
         </div>
         <div className="kpi-item" style={{ cursor: 'pointer' }} onClick={() => setFilter(f => f === 'unmatched' ? 'all' : 'unmatched')}>
           <div className="kpi-label">Unmatched Rent</div>
@@ -355,7 +356,7 @@ export default function Transactions() {
 
       <table className="tx-table">
         <colgroup>
-          <col style={{ width: 90 }} />
+          <col style={{ width: 100 }} />
           <col />
           <col style={{ width: 100 }} />
           <col style={{ width: 80 }} />
@@ -401,9 +402,9 @@ export default function Transactions() {
                 onContextMenu={e => handleContextMenu(e, tx)}
                 style={isReviewTab ? { background: '#FFFBEB' } : undefined}
               >
-                <td className="nowrap mono">{new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}</td>
+                <td className="nowrap mono">{formatDate(tx.date)}</td>
                 <td className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
-                <td className="num mono">${Math.abs(txAmt).toLocaleString()}</td>
+                <td className="num mono">{formatMoney(Math.abs(txAmt))}</td>
                 <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
                 <td className="nowrap">{tx.category}</td>
                 <td style={{ color: '#666' }}>
@@ -437,7 +438,7 @@ export default function Transactions() {
                           const prop = properties.find(p => p.id === t.property_id);
                           return (
                             <option key={t.id} value={t.id}>
-                              {t.name}{prop ? ` — ${prop.name}` : ''} (${parseFloat(t.monthly_rent).toLocaleString()}/mo)
+                              {t.name}{prop ? ` — ${prop.name}` : ''} ({formatMoney(t.monthly_rent)}/mo)
                             </option>
                           );
                         })}
@@ -502,8 +503,8 @@ export default function Transactions() {
         <Modal title="Edit Transaction" onClose={() => setModal(null)} onSave={handleSave} saving={saving} error={modalError}>
           <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
             <strong>{modal.description}</strong>
-            <span style={{ marginLeft: 10, color: '#888' }}>{new Date(modal.date).toLocaleDateString()}</span>
-            <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(modal.amount)).toLocaleString()}</span>
+            <span style={{ marginLeft: 10, color: '#888' }}>{formatDate(modal.date)}</span>
+            <span className="mono" style={{ marginLeft: 10 }}>{formatMoney(Math.abs(parseFloat(modal.amount)))}</span>
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -551,7 +552,7 @@ export default function Transactions() {
           <Modal title="Assign Tenant" onClose={() => setAssignModal(null)} onSave={handleAssignSave} saving={assignSaving}>
             <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
               <strong>{assignModal.description}</strong>
-              <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(txAmt).toLocaleString()}</span>
+              <span className="mono" style={{ marginLeft: 10 }}>{formatMoney(Math.abs(txAmt))}</span>
             </div>
             <div className="form-group">
               <label>Tenant</label>
@@ -562,7 +563,7 @@ export default function Transactions() {
                   const deltaLabel = Math.abs(delta) < 1 ? 'exact match' : `${delta > 0 ? '+' : ''}$${Math.abs(delta).toFixed(0)} from rent`;
                   return (
                     <option key={t.id} value={t.id}>
-                      {t.name} — ${parseFloat(t.monthly_rent).toLocaleString()}/mo ({deltaLabel})
+                      {t.name} — {formatMoney(t.monthly_rent)}/mo ({deltaLabel})
                     </option>
                   );
                 })}

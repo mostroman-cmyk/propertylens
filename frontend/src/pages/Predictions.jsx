@@ -5,6 +5,7 @@ import {
   bulkAcceptPredictions, getPredictionActivity,
   getSimilarTraining, getMisclassifiedPatterns, bulkFixPredictions,
 } from '../api';
+import { formatMoney, formatDate } from '../utils/format';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -93,14 +94,14 @@ function SimilarTrainingPopover({ tx, onClose }) {
             {rows.map((r, i) => (
               <tr key={r.id || i} style={{ borderBottom: '1px solid #F5F5F5' }}>
                 <td style={{ padding: '3px 6px', color: '#999', whiteSpace: 'nowrap' }}>
-                  {new Date(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                  {formatDate(r.date)}
                 </td>
                 <td style={{ padding: '3px 6px', color: '#333', maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                     title={r.description}>
                   {r.display_description || r.description}
                 </td>
                 <td style={{ padding: '3px 6px', color: '#555', whiteSpace: 'nowrap', textAlign: 'right', fontFamily: 'IBM Plex Mono, monospace' }}>
-                  ${Math.abs(parseFloat(r.amount)).toLocaleString()}
+                  {formatMoney(Math.abs(parseFloat(r.amount)))}
                 </td>
                 <td style={{ padding: '3px 6px', color: '#555' }}>{r.category}</td>
                 <td style={{ padding: '3px 6px', color: '#555', maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
@@ -718,7 +719,7 @@ export default function Predictions() {
                         return (
                           <tr key={tx.id} style={{ height: 36 }}>
                             <td className="nowrap mono" style={{ fontSize: 11 }}>
-                              {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                              {formatDate(tx.date)}
                             </td>
                             <td className="col-desc" title={tx.description} style={{ color: '#555' }}>
                               {txDisp}
@@ -728,7 +729,7 @@ export default function Predictions() {
                                 </span>
                               )}
                             </td>
-                            <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                            <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
                             <td><PredCell value={tx.predicted_category} /></td>
                             <td><PredCell value={txPropDisplay} /></td>
                             <td><PredCell value={tx.predicted_tenant_name} /></td>
@@ -769,7 +770,7 @@ export default function Predictions() {
         <Modal title="Edit Prediction" onClose={() => setEditModal(null)} onSave={handleEditAccept} saveLabel="Accept with Changes">
           <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
             <strong>{editModal.tx.display_description || editModal.tx.description}</strong>
-            <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(editModal.tx.amount)).toLocaleString()}</span>
+            <span className="mono" style={{ marginLeft: 10 }}>{formatMoney(Math.abs(parseFloat(editModal.tx.amount)))}</span>
           </div>
           <div className="form-group">
             <label>Category</label>

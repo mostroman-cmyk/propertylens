@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getProperties, getTenants, createProperty, updateProperty } from '../api';
+import { formatMoney } from '../utils/format';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
 
@@ -81,7 +82,7 @@ export default function Properties() {
                 <div className="property-address">{prop.address}</div>
               </div>
               <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
-                <span className="label">{propTenants.length} units · <span className="mono">${monthlyRent.toLocaleString()}/mo</span></span>
+                <span className="label">{propTenants.length} units · <span className="mono">{formatMoney(monthlyRent, { noCents: true })}/mo</span></span>
                 <button className="btn-edit" onClick={() => openEdit(prop)}>Edit</button>
               </div>
             </div>
@@ -94,7 +95,7 @@ export default function Properties() {
                   <tr key={t.id}>
                     <td className="nowrap">{t.unit}</td>
                     <td>{t.name}</td>
-                    <td className="num mono">${parseFloat(t.monthly_rent).toLocaleString()}</td>
+                    <td className="num mono">{formatMoney(t.monthly_rent)}</td>
                   </tr>
                 ))}
                 {propTenants.length === 0 && (

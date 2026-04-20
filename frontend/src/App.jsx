@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { formatDate } from './utils/format';
 import Dashboard from './pages/Dashboard';
 import Properties from './pages/Properties';
 import Tenants from './pages/Tenants';
@@ -14,9 +15,7 @@ import Login from './pages/Login';
 import './App.css';
 
 function TopBar() {
-  const dateStr = new Date().toLocaleDateString('en-US', {
-    weekday: 'short', year: 'numeric', month: 'short', day: 'numeric',
-  });
+  const dateStr = formatDate(new Date(), 'header');
   return (
     <div className="topbar">
       <span className="topbar-brand">PROPERTYLENS</span>

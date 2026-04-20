@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getTenants, getTransactions, api } from '../api';
+import { formatMoney, formatDate } from '../utils/format';
 
 const FILTER_OPTIONS = [
   { key: '7d',         label: '7 Days' },
@@ -97,17 +98,6 @@ function getMonthsInRange(startDate, endDate) {
   return months.length > 0 ? months : null;
 }
 
-function fmtDate(dateStr) {
-  if (!dateStr) return '—';
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-function fmtDateFull(dateStr) {
-  if (!dateStr) return '';
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
 
 function RangeLabel({ filterKey, startDate, endDate }) {
   if (filterKey === 'all' || (!startDate && !endDate)) {
@@ -115,7 +105,7 @@ function RangeLabel({ filterKey, startDate, endDate }) {
   }
   return (
     <div className="date-filter-label">
-      Showing: {fmtDateFull(startDate)} – {fmtDateFull(endDate)}
+      Showing: {formatDate(startDate)} – {formatDate(endDate)}
     </div>
   );
 }
@@ -146,7 +136,7 @@ function OutstandingTooltip({ breakdown, filterRentMonths, tenantCount }) {
       </div>
       {breakdown.map((b, i) => (
         <div key={i} style={{ color: '#F87171', fontSize: 11, paddingLeft: 8 }}>
-          {b.name}{filterRentMonths?.length > 1 ? ` (${b.month})` : ''} — ${b.rent.toLocaleString()}
+          {b.name}{filterRentMonths?.length > 1 ? ` (${b.month})` : ''} — {formatMoney(b.rent, { noCents: true })}
         </div>
       ))}
     </div>
@@ -378,7 +368,7 @@ export default function Dashboard() {
         <div className="alert alert-warn" style={{ marginBottom: 8 }}>
           {unpaidTenants.length} tenant{unpaidTenants.length !== 1 ? 's' : ''} have not paid for {selectedMonthLabel}:{' '}
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
-          <span className="mono">${rentOutstanding.toLocaleString()}</span> outstanding.
+          <span className="mono">{formatMoney(rentOutstanding, { noCents: true })}</span> outstanding.
         </div>
       ) : tenants.length > 0 ? (
         <div className="alert alert-success" style={{ marginBottom: 8 }}>
@@ -419,7 +409,7 @@ export default function Dashboard() {
       <div className="kpi-row">
         <div className="kpi-item">
           <div className="kpi-label">Rent Roll / Mo</div>
-          <div className="kpi-value">${totalMonthlyRent.toLocaleString()}</div>
+          <div className="kpi-value">{formatMoney(totalMonthlyRent, { noCents: true })}</div>
         </div>
 
         <div className="kpi-item">
@@ -427,11 +417,11 @@ export default function Dashboard() {
             Collected ({periodLabel})
             {expectedRentForPeriod != null && collected < expectedRentForPeriod && (
               <span style={{ fontSize: 10, color: '#B45309', marginLeft: 4 }}>
-                of ${expectedRentForPeriod.toLocaleString()}
+                of {formatMoney(expectedRentForPeriod, { noCents: true })}
               </span>
             )}
           </div>
-          <div className="kpi-value">{txLoading ? '…' : `$${Math.round(collected).toLocaleString()}`}</div>
+          <div className="kpi-value">{txLoading ? '…' : formatMoney(collected)}</div>
         </div>
 
         <div className="kpi-item">
@@ -442,7 +432,7 @@ export default function Dashboard() {
             onMouseLeave={() => setShowOutstandingTooltip(false)}
           >
             <div className={`kpi-value${outstandingByRM > 0 ? ' negative' : ' muted'}`}>
-              {txLoading ? '…' : outstandingByRM !== null ? `$${outstandingByRM.toLocaleString()}` : '—'}
+              {txLoading ? '…' : outstandingByRM !== null ? formatMoney(outstandingByRM) : '—'}
             </div>
             {showOutstandingTooltip && outstandingByRM !== null && (
               <OutstandingTooltip
@@ -457,7 +447,7 @@ export default function Dashboard() {
         <div className="kpi-item">
           <div className="kpi-label">Net Income ({periodLabel})</div>
           <div className={`kpi-value${netIncome < 0 ? ' negative' : ''}`}>
-            {txLoading ? '…' : `$${netIncome.toLocaleString()}`}
+            {txLoading ? '…' : formatMoney(netIncome)}
           </div>
         </div>
 
@@ -484,7 +474,7 @@ export default function Dashboard() {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
               <colgroup>
-                <col style={{ width: 80 }} /><col /><col style={{ width: 110 }} />
+                <col style={{ width: 100 }} /><col /><col style={{ width: 110 }} />
                 <col style={{ width: 75 }} /><col style={{ width: 120 }} />
                 <col style={{ width: 140 }} /><col style={{ width: 120 }} />
               </colgroup>
@@ -497,11 +487,11 @@ export default function Dashboard() {
               <tbody>
                 {transactions.slice(0, 50).map((tx) => (
                   <tr key={tx.id}>
-                    <td className="nowrap mono" style={{ fontSize: 12 }}>{fmtDate(tx.date)}</td>
+                    <td className="nowrap mono" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
                     <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
                       {tx.display_description || tx.description}
                     </td>
-                    <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                    <td className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
                     <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
                     <td className="nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
                     <td style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
@@ -567,7 +557,7 @@ export default function Dashboard() {
                     {paidCount} / {tenants.length} PAID
                   </td>
                   <td colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
-                    ${Math.round(collectedForMonth).toLocaleString()} of ${totalMonthlyRent.toLocaleString()} ({paidPct}%)
+                    {formatMoney(collectedForMonth)} of {formatMoney(totalMonthlyRent, { noCents: true })} ({paidPct}%)
                   </td>
                 </tr>
               )}
@@ -583,23 +573,23 @@ export default function Dashboard() {
                     </a>
                   </td>
                   <td className="num mono" style={{ fontSize: 12 }}>
-                    ${parseFloat(tenant.monthly_rent).toLocaleString()}
+                    {formatMoney(tenant.monthly_rent, { noCents: true })}
                   </td>
                   <td className="nowrap" style={{ fontSize: 12, color: '#666' }}>
-                    {paid ? fmtDate(paidDate) : '—'}
+                    {paid ? formatDate(paidDate) : '—'}
                   </td>
                   <td className="nowrap">
                     {!paid ? (
                       <span className="status-unpaid">● DUE</span>
                     ) : shortfall > 0 ? (
                       <span
-                        title={`Paid $${shortfall.toFixed(2)} less than expected rent of $${parseFloat(tenant.monthly_rent).toLocaleString()}`}
+                        title={`Paid ${formatMoney(shortfall)} less than expected rent of ${formatMoney(tenant.monthly_rent)}`}
                         style={{
                           color: '#B45309', fontWeight: 700, fontSize: 11,
                           letterSpacing: '0.04em', cursor: 'help',
                         }}
                       >
-                        ● PAID <span style={{ fontWeight: 400, fontSize: 10 }}>(short ${shortfall.toFixed(0)})</span>
+                        ● PAID <span style={{ fontWeight: 400, fontSize: 10 }}>(short {formatMoney(shortfall, { noCents: true })})</span>
                       </span>
                     ) : (
                       <span className="status-paid">● PAID</span>
