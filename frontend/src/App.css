@@ -1383,20 +1383,46 @@ button,
 
 /* ── DASHBOARD SECTION SEPARATOR ────────────────────────────────────── */
 
-/* Desktop: thin left border between Rent Status (left) and Recent Tx (right) */
-@media (min-width: 1025px) {
-  .dashboard-tx-panel {
-    border-left: 1px solid #E5E5E5;
-    padding-left: 28px;
-  }
+
+/* ── DASHBOARD ANALYTICS LAYOUT ─────────────────────────────────────── */
+
+.dashboard-analytics-row {
+  display: grid;
+  grid-template-columns: 45fr 55fr;
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 24px;
 }
 
-/* Mobile/tablet: top border when sections stack vertically */
+/* Expense Donut + Anomaly row — equal halves */
+.dashboard-analytics-row:nth-child(2) {
+  grid-template-columns: 1fr 1fr;
+}
+
+.dashboard-panel {
+  border: 1px solid #E5E5E5;
+  border-radius: 2px;
+  padding: 20px;
+  background: #fff;
+}
+
+.dashboard-panel-header {
+  margin-bottom: 16px;
+  padding-bottom: 10px;
+  border-bottom: 2px solid #000;
+}
+
+.dashboard-tx-full {
+  margin-bottom: 24px;
+}
+
+/* Mobile: all sections stack */
 @media (max-width: 1024px) {
-  .dashboard-tx-panel {
-    border-top: 2px solid #E5E5E5;
-    padding-top: 20px;
-    margin-top: 4px;
+  .dashboard-analytics-row {
+    grid-template-columns: 1fr;
+  }
+  .dashboard-analytics-row:nth-child(2) {
+    grid-template-columns: 1fr;
   }
 }
 

@@ -13,6 +13,8 @@ export default defineConfig({
           'export-libs': ['jspdf', 'jspdf-autotable', 'xlsx', 'jszip', 'file-saver'],
           // Split React router and core vendor
           vendor: ['react', 'react-dom', 'react-router-dom'],
+          // Split recharts into its own chunk
+          recharts: ['recharts'],
           // Split axios
           axios: ['axios'],
         },

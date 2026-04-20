@@ -62,3 +62,7 @@ export const syncOneConnection            = (id) => api.post(`/plaid/connections
 export const disconnectBank               = (id) => api.delete(`/plaid/connections/${id}/full`).then(r => r.data);
 export const removeConnectionTransactions = (id) => api.delete(`/plaid/connections/${id}/transactions-only`).then(r => r.data);
 export const mergeDuplicateConnections    = ()   => api.post('/plaid/connections/merge-duplicates').then(r => r.data);
+
+export const getDashboardCashFlow       = (params) => api.get('/dashboard/cash-flow', { params }).then(r => r.data);
+export const getDashboardExpenses       = (params) => api.get('/dashboard/expense-breakdown', { params }).then(r => r.data);
+export const getDashboardAnomalies      = (params) => api.get('/dashboard/anomalies', { params }).then(r => r.data);

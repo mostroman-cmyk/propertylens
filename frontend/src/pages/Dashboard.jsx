@@ -3,6 +3,9 @@ import { getTenants, getTransactions, api } from '../api';
 import { formatMoney, formatDate, formatType } from '../utils/format';
 import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
+import CashFlowWaterfall from '../components/CashFlowWaterfall';
+import ExpenseDonut from '../components/ExpenseDonut';
+import AnomalyCard from '../components/AnomalyCard';
 
 const FILTER_OPTIONS = [
   { key: '7d',         label: '7 Days' },
@@ -470,93 +473,10 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="split-layout">
-        {/* ── Recent Transactions ── */}
-        <div className="dashboard-tx-panel" style={{ minWidth: 0, flex: '1 1 0', order: 2 }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
-            <h2 className="section-title" style={{ margin: 0 }}>
-              Recent Transactions
-              {txLoading && <span style={{ fontWeight: 400, color: '#aaa', marginLeft: 8 }}>loading…</span>}
-            </h2>
-            {transactions.length > 50 && (
-              <a href="/transactions" style={{ fontSize: 12, color: '#666', textDecoration: 'underline' }}>
-                View all transactions →
-              </a>
-            )}
-          </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table className="mobile-cards tx-table" style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
-              <colgroup>
-                <col style={{ width: 100 }} /><col /><col style={{ width: 110 }} />
-                <col style={{ width: 75 }} /><col style={{ width: 120 }} />
-                <col style={{ width: 140 }} /><col style={{ width: 120 }} />
-              </colgroup>
-              <thead>
-                <tr>
-                  <th>Date</th><th>Description</th><th className="num">Amount</th>
-                  <th>Type</th><th>Category</th><th>Property</th><th>Tenant</th>
-                </tr>
-              </thead>
-              <tbody>
-                {transactions.slice(0, 50).map((tx) => (
-                  <tr key={tx.id}>
-                    {/* Mobile card layout */}
-                    <td className="tx-mobile-main hide-desktop" style={{ fontWeight: 600, fontSize: 14 }}>
-                      <span style={{ flex: 1, marginRight: 8 }}>{tx.display_description || tx.description}</span>
-                      <span className="mono" style={{ fontWeight: 700, flexShrink: 0 }}>{formatMoney(Math.abs(parseFloat(tx.amount)))}</span>
-                    </td>
-                    <td className="tx-mobile-sub hide-desktop">
-                      <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
-                      {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
-                      {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
-                      <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{formatType(tx.type)}</span>
-                    </td>
-                    {/* Desktop columns */}
-                    <td className="nowrap mono show-desktop" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
-                    <td className="show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
-                      {tx.display_description || tx.description}
-                    </td>
-                    <td className="num mono show-desktop">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                    <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
-                    <td className="nowrap show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
-                    <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-                      {tx.property_scope === 'portfolio'
-                        ? <span style={{ fontStyle: 'italic', fontWeight: 600, fontVariant: 'small-caps' }}>All</span>
-                        : (tx.property_name || '—')}
-                    </td>
-                    <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
-                      {tx.tenant_name || '—'}
-                    </td>
-                  </tr>
-                ))}
-                {transactions.length === 0 && !txLoading && (
-                  <tr>
-                    <td colSpan={7} style={{ padding: 0 }}>
-                      {allTransactions.length === 0 ? (
-                        <EmptyState
-                          icon="bank"
-                          title="No transactions yet"
-                          description="Connect your bank account to start importing rent payments and expenses."
-                          primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
-                        />
-                      ) : (
-                        <EmptyState
-                          icon="search"
-                          title="No transactions in this range"
-                          description={`Nothing found for the selected period.`}
-                          primaryAction={dateFilter !== 'all' ? { label: 'Show all time', onClick: () => handleFilterClick('all') } : null}
-                        />
-                      )}
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* ── Rent Status ── */}
-        <div style={{ flexShrink: 0, minWidth: 0, order: 1 }}>
+      {/* ── Row 4: Rent Status + Cash Flow Waterfall ── */}
+      <div className="dashboard-analytics-row">
+        {/* Rent Status — ~45% width */}
+        <div className="dashboard-panel dashboard-rent-status">
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
             <select
@@ -630,6 +550,101 @@ export default function Dashboard() {
               ))}
               {activeTenants.length === 0 && (
                 <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No active tenants.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Cash Flow Waterfall — ~55% width */}
+        <CashFlowWaterfall
+          startDate={startDate}
+          endDate={endDate}
+          periodLabel={periodLabel}
+        />
+      </div>
+
+      {/* ── Row 5: Expense Donut + Anomaly Detection ── */}
+      <div className="dashboard-analytics-row">
+        <ExpenseDonut startDate={startDate} endDate={endDate} />
+        <AnomalyCard  startDate={startDate} endDate={endDate} />
+      </div>
+
+      {/* ── Row 6: Recent Transactions (full width) ── */}
+      <div className="dashboard-panel dashboard-tx-full">
+        <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            Recent Transactions
+            {txLoading && <span style={{ fontWeight: 400, color: '#aaa', marginLeft: 8 }}>loading…</span>}
+          </h2>
+          {transactions.length > 50 && (
+            <a href="/transactions" style={{ fontSize: 12, color: '#666', textDecoration: 'underline' }}>
+              View all transactions →
+            </a>
+          )}
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="mobile-cards tx-table" style={{ tableLayout: 'fixed', width: '100%', minWidth: 760 }}>
+            <colgroup>
+              <col style={{ width: 100 }} /><col /><col style={{ width: 110 }} />
+              <col style={{ width: 75 }} /><col style={{ width: 120 }} />
+              <col style={{ width: 140 }} /><col style={{ width: 120 }} />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Date</th><th>Description</th><th className="num">Amount</th>
+                <th>Type</th><th>Category</th><th>Property</th><th>Tenant</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.slice(0, 50).map((tx) => (
+                <tr key={tx.id}>
+                  <td className="tx-mobile-main hide-desktop" style={{ fontWeight: 600, fontSize: 14 }}>
+                    <span style={{ flex: 1, marginRight: 8 }}>{tx.display_description || tx.description}</span>
+                    <span className="mono" style={{ fontWeight: 700, flexShrink: 0 }}>{formatMoney(Math.abs(parseFloat(tx.amount)))}</span>
+                  </td>
+                  <td className="tx-mobile-sub hide-desktop">
+                    <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
+                    {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
+                    {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
+                    <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{formatType(tx.type)}</span>
+                  </td>
+                  <td className="nowrap mono show-desktop" style={{ fontSize: 12 }}>{formatDate(tx.date)}</td>
+                  <td className="show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>
+                    {tx.display_description || tx.description}
+                  </td>
+                  <td className="num mono show-desktop">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
+                  <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
+                  <td className="nowrap show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
+                  <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                    {tx.property_scope === 'portfolio'
+                      ? <span style={{ fontStyle: 'italic', fontWeight: 600, fontVariant: 'small-caps' }}>All</span>
+                      : (tx.property_name || '—')}
+                  </td>
+                  <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
+                    {tx.tenant_name || '—'}
+                  </td>
+                </tr>
+              ))}
+              {transactions.length === 0 && !txLoading && (
+                <tr>
+                  <td colSpan={7} style={{ padding: 0 }}>
+                    {allTransactions.length === 0 ? (
+                      <EmptyState
+                        icon="bank"
+                        title="No transactions yet"
+                        description="Connect your bank account to start importing rent payments and expenses."
+                        primaryAction={{ label: 'Go to Settings → Bank Connections', onClick: () => window.location.href = '/settings' }}
+                      />
+                    ) : (
+                      <EmptyState
+                        icon="search"
+                        title="No transactions in this range"
+                        description="Nothing found for the selected period."
+                        primaryAction={dateFilter !== 'all' ? { label: 'Show all time', onClick: () => handleFilterClick('all') } : null}
+                      />
+                    )}
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
