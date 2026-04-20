@@ -298,6 +298,9 @@ async function migrate() {
   `);
   await db.query(`CREATE INDEX IF NOT EXISTS idx_payer_patterns_name ON payer_patterns (payer_name)`);
 
+  // Column: human-readable cleaned description for UI display
+  await db.query(`ALTER TABLE transactions ADD COLUMN IF NOT EXISTS display_description TEXT`);
+
   // IMPORTANT: Reset all normalized_descriptions so they are recomputed with the
   // fixed normalization (which now correctly strips CONF# labels regardless of
   // whether the ID is numeric-only or alphanumeric). This ensures "BAILY ANDREW CONF"
@@ -307,16 +310,17 @@ async function migrate() {
   console.log(`[migrate] Reset normalized_description on ${normCount[0].count} transactions for recompute with fixed normalization`);
 
   // Backfill normalized_description with corrected logic
-  const { normalizeDescription: nd, extractSenderName } = require('../prediction/engine');
+  const { normalizeDescription: nd, computeDisplayDescription: cdd, extractSenderName } = require('../prediction/engine');
   const { rows: allTx } = await db.query('SELECT id, description, type FROM transactions');
   let normFixed = 0, payerLearned = 0, patternLearned = 0;
 
   for (const row of allTx) {
     const newNorm = nd(row.description);
+    const displayDesc = cdd(row.description);
     const payerName = row.type === 'income' ? extractSenderName(row.description) : null;
     await db.query(
-      'UPDATE transactions SET normalized_description=$1, payer_name=$2 WHERE id=$3',
-      [newNorm, payerName || null, row.id]
+      'UPDATE transactions SET normalized_description=$1, display_description=$2, payer_name=$3 WHERE id=$4',
+      [newNorm, displayDesc, payerName || null, row.id]
     );
     normFixed++;
   }

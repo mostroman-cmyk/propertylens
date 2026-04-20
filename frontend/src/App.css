@@ -283,6 +283,36 @@ tr:hover td { background: #FAFAFA; }
 .badge.income  { color: #000; }
 .badge.expense { color: #E30613; }
 
+/* Prediction confidence badges */
+.conf-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 6px;
+  border-radius: 2px;
+  text-transform: uppercase;
+}
+.conf-HIGH   { background: #DCFCE7; color: #16A34A; }
+.conf-MEDIUM { background: #FEF9C3; color: #A16207; }
+.conf-LOW    { background: #FEE2E2; color: #DC2626; }
+
+/* Predicted value cell — italic-ish pill indicating "not yet accepted" */
+.pred-cell {
+  display: inline-block;
+  font-size: 12px;
+  color: #333;
+  background: #F5F5F5;
+  border: 1px solid #E5E5E5;
+  border-radius: 2px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.pred-cell.portfolio { color: #666; font-size: 11px; }
+
 /* ── BUTTONS ───────────────────────────────────────────────────────── */
 
 .btn-row {

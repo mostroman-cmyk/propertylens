@@ -5,6 +5,7 @@ import Toast, { useToast } from '../components/Toast';
 
 const CATEGORIES = ['rent', 'Repairs', 'Insurance', 'Utilities', 'Maintenance', 'Property Tax', 'Landscaping', 'HOA', 'Mortgage', 'Other Income', 'Other'];
 
+// Group by normalized_description but preserve per-item display_description
 function groupByNormalized(txs) {
   const map = new Map();
   for (const tx of txs) {
@@ -15,6 +16,24 @@ function groupByNormalized(txs) {
   return Array.from(map.entries())
     .sort((a, b) => b[1].length - a[1].length)
     .map(([key, items]) => ({ key, items }));
+}
+
+// Fields the group is predicting (based on first item)
+function predictingFields(tx) {
+  const f = [];
+  if (tx.predicted_category) f.push('CATEGORY');
+  if (tx.predicted_property_id || tx.predicted_property_scope === 'portfolio') f.push('PROPERTY');
+  if (tx.predicted_tenant_id) f.push('TENANT');
+  return f;
+}
+
+function ConfBadge({ level }) {
+  return <span className={`conf-badge conf-${level}`}>{level === 'MEDIUM' ? 'MED' : level}</span>;
+}
+
+function PredCell({ value, empty }) {
+  if (!value) return <span style={{ color: '#ccc', fontSize: 12 }}>{empty || '—'}</span>;
+  return <span className="pred-cell">{value}</span>;
 }
 
 function ExamplesPopover({ tx, onClose }) {
@@ -34,12 +53,8 @@ function ExamplesPopover({ tx, onClose }) {
       background: '#fff', border: '1px solid #E5E5E5', borderRadius: 4,
       boxShadow: '0 4px 16px rgba(0,0,0,0.12)', padding: 14, minWidth: 360, maxWidth: 480,
     }}>
-      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>
-        Why this prediction?
-      </div>
-      <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>
-        {tx.prediction_reasoning}
-      </div>
+      <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Why this prediction?</div>
+      <div style={{ fontSize: 12, color: '#555', marginBottom: 10 }}>{tx.prediction_reasoning}</div>
       {examples.length > 0 && (
         <>
           <div style={{ fontSize: 11, fontWeight: 600, color: '#888', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -49,8 +64,7 @@ function ExamplesPopover({ tx, onClose }) {
             <tbody>
               {examples.map((ex, i) => (
                 <tr key={i} style={{ borderBottom: '1px solid #F0F0F0' }}>
-                  <td style={{ padding: '4px 6px', color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-                      title={ex.description}>
+                  <td style={{ padding: '4px 6px', color: '#333', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ex.description}>
                     {ex.description || ex.normalized}
                   </td>
                   <td style={{ padding: '4px 6px', color: '#555', whiteSpace: 'nowrap' }}>{ex.category}</td>
@@ -63,7 +77,7 @@ function ExamplesPopover({ tx, onClose }) {
       )}
       {examples.length === 0 && (
         <div style={{ fontSize: 11, color: '#999', fontStyle: 'italic' }}>
-          This prediction was made by a fallback rule (keyword match or amount match), not by similarity to prior transactions.
+          Fallback rule (keyword or amount match), not similarity-based.
         </div>
       )}
     </div>
@@ -72,7 +86,6 @@ function ExamplesPopover({ tx, onClose }) {
 
 function ActivityLog({ activity }) {
   if (!activity || activity.length === 0) return null;
-
   const eventLabel = (type) => ({
     manual_classify: 'Manual classify',
     accept:          'Prediction accepted',
@@ -96,13 +109,9 @@ function ActivityLog({ activity }) {
         </colgroup>
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Event</th>
-            <th>Transaction</th>
-            <th className="num">Similar</th>
-            <th className="num">HIGH</th>
-            <th className="num">MED</th>
-            <th className="num">LOW</th>
+            <th>Time</th><th>Event</th><th>Transaction</th>
+            <th className="num">Similar</th><th className="num">HIGH</th>
+            <th className="num">MED</th><th className="num">LOW</th>
           </tr>
         </thead>
         <tbody>
@@ -126,6 +135,41 @@ function ActivityLog({ activity }) {
   );
 }
 
+// Shared colgroup for every prediction table
+function PredColGroup() {
+  return (
+    <colgroup>
+      <col style={{ width: 80 }} />
+      <col />
+      <col style={{ width: 90 }} />
+      <col style={{ width: 110 }} />
+      <col style={{ width: 150 }} />
+      <col style={{ width: 130 }} />
+      <col style={{ width: 58 }} />
+      <col style={{ width: 170 }} />
+      <col style={{ width: 106 }} />
+    </colgroup>
+  );
+}
+
+function PredTableHead() {
+  return (
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Description</th>
+        <th className="num">Amount</th>
+        <th>→ Category</th>
+        <th>→ Property</th>
+        <th>→ Tenant</th>
+        <th>Conf</th>
+        <th>Reasoning</th>
+        <th></th>
+      </tr>
+    </thead>
+  );
+}
+
 export default function Predictions() {
   const [predictions, setPredictions] = useState([]);
   const [properties, setProperties]   = useState([]);
@@ -136,7 +180,7 @@ export default function Predictions() {
   const [accepting, setAccepting]     = useState(false);
   const [bulkAccepting, setBulkAccepting] = useState(null);
   const [editModal, setEditModal]     = useState(null);
-  const [activePopover, setActivePopover] = useState(null); // txId with open popover
+  const [activePopover, setActivePopover] = useState(null);
   const { toast, showToast } = useToast();
 
   const reload = useCallback(async () => {
@@ -165,11 +209,8 @@ export default function Predictions() {
         `Re-trained and re-predicted: ${result.predicted} transactions updated — ` +
         `${result.counts.HIGH} HIGH, ${result.counts.MEDIUM} MED, ${result.counts.LOW} LOW`
       );
-    } catch {
-      showToast('Prediction failed');
-    } finally {
-      setRunning(false);
-    }
+    } catch { showToast('Prediction failed'); }
+    finally { setRunning(false); }
   };
 
   const handleAcceptAllHigh = async () => {
@@ -178,11 +219,8 @@ export default function Predictions() {
       const result = await acceptAllHighConfidence();
       await reload();
       showToast(`Accepted ${result.accepted} HIGH confidence predictions`);
-    } catch {
-      showToast('Failed to accept predictions');
-    } finally {
-      setAccepting(false);
-    }
+    } catch { showToast('Failed to accept predictions'); }
+    finally { setAccepting(false); }
   };
 
   const handleBulkAccept = async (ids, label) => {
@@ -191,13 +229,9 @@ export default function Predictions() {
       const result = await bulkAcceptPredictions(ids);
       setPredictions(prev => prev.filter(p => !ids.includes(p.id)));
       showToast(`Accepted ${result.accepted} predictions`);
-      // Reload activity after a short delay to let background retrain start
       setTimeout(() => reload(), 2000);
-    } catch {
-      showToast('Failed to accept');
-    } finally {
-      setBulkAccepting(null);
-    }
+    } catch { showToast('Failed to accept'); }
+    finally { setBulkAccepting(null); }
   };
 
   const handleAccept = async (tx, overrides = {}) => {
@@ -206,9 +240,7 @@ export default function Predictions() {
       setPredictions(prev => prev.filter(p => p.id !== tx.id));
       showToast('Accepted');
       setTimeout(() => reload(), 2000);
-    } catch {
-      showToast('Failed to accept');
-    }
+    } catch { showToast('Failed to accept'); }
   };
 
   const handleReject = async (tx) => {
@@ -216,9 +248,7 @@ export default function Predictions() {
       await rejectPrediction(tx.id);
       setPredictions(prev => prev.filter(p => p.id !== tx.id));
       showToast('Rejected');
-    } catch {
-      showToast('Failed to reject');
-    }
+    } catch { showToast('Failed to reject'); }
   };
 
   const openEdit = (tx) => {
@@ -295,83 +325,127 @@ export default function Predictions() {
         const groups = groupByNormalized(txs);
         return (
           <div key={label} style={{ marginBottom: 40 }}>
-            <h2 className="section-title" style={{ marginBottom: 16 }}>
+            <h2 className="section-title" style={{ marginBottom: 12 }}>
               {label} — {txs.length} transaction{txs.length !== 1 ? 's' : ''}
             </h2>
 
-            {groups.map(({ key, items }) => (
-              <div key={key} style={{ marginBottom: 24 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', background: '#F5F5F5', border: '1px solid #E5E5E5', borderBottom: 'none', borderRadius: '2px 2px 0 0' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <span style={{ fontWeight: 600, fontSize: 13 }}>{items[0].predicted_category}</span>
-                    <span style={{ color: '#888', fontSize: 12 }}>"{key}"</span>
-                    {items[0].predicted_property_name && (
-                      <span style={{ color: '#666', fontSize: 12 }}>· {items[0].predicted_property_name}</span>
-                    )}
-                    {items[0].predicted_tenant_name && (
-                      <span style={{ color: '#666', fontSize: 12 }}>· {items[0].predicted_tenant_name}</span>
-                    )}
-                  </div>
-                  {items.length > 1 && (
-                    <button
-                      className="btn-primary"
-                      onClick={() => handleBulkAccept(items.map(i => i.id), key)}
-                      disabled={bulkAccepting === key}
-                    >
-                      {bulkAccepting === key ? 'Accepting...' : `Accept all ${items.length}`}
-                    </button>
-                  )}
-                </div>
+            {groups.map(({ key, items }, groupIdx) => {
+              const first = items[0];
+              const dispDesc = first.display_description || first.description;
+              const predFields = predictingFields(first);
+              const propDisplay = first.predicted_property_scope === 'portfolio'
+                ? '🏘 All Properties'
+                : (first.predicted_property_name || null);
 
-                <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
-                  <colgroup>
-                    <col style={{ width: 90 }} />
-                    <col />
-                    <col style={{ width: 100 }} />
-                    <col style={{ width: 220 }} />
-                    <col style={{ width: 110 }} />
-                  </colgroup>
-                  <tbody>
-                    {items.map(tx => (
-                      <tr key={tx.id}>
-                        <td className="nowrap mono" style={{ fontSize: 11 }}>
-                          {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
-                        </td>
-                        <td className="col-desc" title={tx.description} style={{ color: '#555' }}>
-                          {tx.description}
-                          {tx.payer_name && (
-                            <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', background: '#F0F0F0', color: '#555', padding: '1px 5px', borderRadius: 2, whiteSpace: 'nowrap', fontFamily: 'IBM Plex Mono, monospace' }}>
-                              {tx.payer_name}
-                            </span>
-                          )}
-                        </td>
-                        <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
-                        <td style={{ color: '#888', fontSize: 12 }} title={tx.prediction_reasoning}>
-                          {tx.prediction_reasoning}
-                        </td>
-                        <td className="nowrap">
-                          <div style={{ display: 'flex', gap: 4, position: 'relative' }}>
-                            <button className="btn-edit btn-accept" onClick={() => handleAccept(tx)} title="Accept">✓</button>
-                            <button className="btn-edit btn-reject" onClick={() => handleReject(tx)} title="Reject">✗</button>
-                            <button className="btn-edit" onClick={() => openEdit(tx)} title="Edit then accept">✎</button>
-                            <div style={{ position: 'relative' }}>
-                              <button
-                                className="btn-edit"
-                                onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
-                                title="Why this prediction?"
-                              >ⓘ</button>
-                              {activePopover === tx.id && (
-                                <ExamplesPopover tx={tx} onClose={() => setActivePopover(null)} />
+              return (
+                <div key={key} style={{ marginBottom: 20 }}>
+                  {/* Group header */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '7px 12px', background: '#F5F5F5',
+                    border: '1px solid #E5E5E5', borderBottom: 'none',
+                    borderRadius: '2px 2px 0 0',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, overflow: 'hidden' }}>
+                      {first.predicted_category && (
+                        <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
+                          {first.predicted_category}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 13, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                            title={first.description}>
+                        {dispDesc}
+                      </span>
+                      {propDisplay && (
+                        <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>· {propDisplay}</span>
+                      )}
+                      {first.predicted_tenant_name && (
+                        <span style={{ fontSize: 12, color: '#888', flexShrink: 0 }}>· {first.predicted_tenant_name}</span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, marginLeft: 12 }}>
+                      {predFields.length > 0 && (
+                        <span style={{ fontSize: 11, color: '#888' }}>
+                          Predicting: {predFields.join(' · ')}
+                        </span>
+                      )}
+                      {items.length > 1 && (
+                        <button
+                          className="btn-primary"
+                          onClick={() => handleBulkAccept(items.map(i => i.id), key)}
+                          disabled={bulkAccepting === key}
+                        >
+                          {bulkAccepting === key ? 'Accepting...' : `Accept all ${items.length}`}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Predictions table */}
+                  <table className="tx-table" style={{ marginBottom: 0, borderTop: 'none' }}>
+                    <PredColGroup />
+                    {groupIdx === 0 && <PredTableHead />}
+                    <tbody>
+                      {items.map(tx => {
+                        const txDisp = tx.display_description || tx.description;
+                        const txPropDisplay = tx.predicted_property_scope === 'portfolio'
+                          ? '🏘 All Properties'
+                          : (tx.predicted_property_name || null);
+
+                        return (
+                          <tr key={tx.id} style={{ height: 36 }}>
+                            <td className="nowrap mono" style={{ fontSize: 11 }}>
+                              {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
+                            </td>
+                            <td className="col-desc" title={tx.description} style={{ color: '#555' }}>
+                              {txDisp}
+                              {tx.payer_name && (
+                                <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 600, letterSpacing: '0.05em', background: '#F0F0F0', color: '#555', padding: '1px 5px', borderRadius: 2, whiteSpace: 'nowrap', fontFamily: 'IBM Plex Mono, monospace' }}>
+                                  {tx.payer_name}
+                                </span>
                               )}
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
+                            </td>
+                            <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
+                            <td>
+                              <PredCell value={tx.predicted_category} />
+                            </td>
+                            <td>
+                              <PredCell value={txPropDisplay} />
+                            </td>
+                            <td>
+                              <PredCell value={tx.predicted_tenant_name} />
+                            </td>
+                            <td>
+                              <ConfBadge level={tx.prediction_confidence} />
+                            </td>
+                            <td className="col-desc" style={{ fontSize: 11, color: '#888' }} title={tx.prediction_reasoning}>
+                              {tx.prediction_reasoning}
+                            </td>
+                            <td className="nowrap">
+                              <div style={{ display: 'flex', gap: 4, position: 'relative' }}>
+                                <button className="btn-edit btn-accept" onClick={() => handleAccept(tx)} title="Accept">✓</button>
+                                <button className="btn-edit btn-reject" onClick={() => handleReject(tx)} title="Reject">✗</button>
+                                <button className="btn-edit" onClick={() => openEdit(tx)} title="Edit then accept">✎</button>
+                                <div style={{ position: 'relative' }}>
+                                  <button
+                                    className="btn-edit"
+                                    onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
+                                    title="Why this prediction?"
+                                  >ⓘ</button>
+                                  {activePopover === tx.id && (
+                                    <ExamplesPopover tx={tx} onClose={() => setActivePopover(null)} />
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
           </div>
         );
       })}
@@ -381,9 +455,10 @@ export default function Predictions() {
           title="Edit Prediction"
           onClose={() => setEditModal(null)}
           onSave={handleEditAccept}
+          saveLabel="Accept with Changes"
         >
           <div style={{ fontSize: 13, color: '#555', marginBottom: 16, padding: '8px 12px', border: '1px solid #E5E5E5', borderRadius: 2 }}>
-            <strong>{editModal.tx.description}</strong>
+            <strong>{editModal.tx.display_description || editModal.tx.description}</strong>
             <span className="mono" style={{ marginLeft: 10 }}>${Math.abs(parseFloat(editModal.tx.amount)).toLocaleString()}</span>
           </div>
           <div className="form-group">
@@ -423,7 +498,6 @@ export default function Predictions() {
       )}
 
       <ActivityLog activity={activity} />
-
       <Toast message={toast} />
     </div>
   );

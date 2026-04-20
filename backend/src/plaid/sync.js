@@ -2,7 +2,7 @@ const plaidClient = require('./client');
 const db = require('../db/db');
 const { applyRulesToTransactions } = require('../categorization/ruleEngine');
 const { autoMatchAll } = require('../matching/rentMatcher');
-const { predictAll, normalizeDescription } = require('../prediction/engine');
+const { predictAll, normalizeDescription, computeDisplayDescription } = require('../prediction/engine');
 const { backfillPropertyTenant } = require('../matching/backfill');
 
 const RENT_TOLERANCE = 10;
@@ -102,11 +102,11 @@ async function syncConnection(conn, rentAmounts, { forceFullSync = false } = {})
         if (tx.pending) { totalSkipped++; continue; }
         const { storedAmount, type, category } = classifyTransaction(tx, rentAmounts);
         const result = await client.query(
-          `INSERT INTO transactions (date, description, normalized_description, amount, type, category, plaid_transaction_id, plaid_account_id)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          `INSERT INTO transactions (date, description, normalized_description, display_description, amount, type, category, plaid_transaction_id, plaid_account_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
            ON CONFLICT (plaid_transaction_id) DO NOTHING
            RETURNING id`,
-          [tx.date, tx.name, normalizeDescription(tx.name), storedAmount, type, category, tx.transaction_id, tx.account_id]
+          [tx.date, tx.name, normalizeDescription(tx.name), computeDisplayDescription(tx.name), storedAmount, type, category, tx.transaction_id, tx.account_id]
         );
         if (result.rowCount > 0) { totalSynced++; newTxIds.push(result.rows[0].id); }
         else totalSkipped++;

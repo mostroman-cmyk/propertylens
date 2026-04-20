@@ -109,6 +109,43 @@ function normalizeDescription(text) {
 }
 
 /**
+ * Human-readable display description — strips card prefixes, account mask noise,
+ * confirmation numbers, and state/ZIP suffixes. Keeps original casing.
+ * Stored in the DB so cleanup runs once per transaction, not per render.
+ *
+ * "CHECKCARD 0927 PADRE DAM MUNICIPAL WAT CA XXXXX2952XXXXXXXXXX0892"
+ *   → "PADRE DAM MUNICIPAL WAT"
+ * "Zelle payment from BAILEY ANDREW for 'NOVEMBER'; Conf# T0ZFYT8WH"
+ *   → "Zelle payment from BAILEY ANDREW for NOVEMBER"
+ */
+function computeDisplayDescription(description) {
+  if (!description) return '';
+  let s = description;
+
+  // Strip leading card-type prefixes with 4-digit card number
+  s = s.replace(/^(?:CHECKCARD|CHECK\s+CARD)\s+\d{4}\s+/i, '');
+  s = s.replace(/^DEBIT\s+CARD(?:\s+PURCHASE)?\s+\d{4}\s+/i, '');
+  s = s.replace(/^POS(?:\s+(?:PURCHASE|DEBIT))?\s+\d{4}\s+/i, '');
+
+  // Strip trailing account masking patterns (runs of X's and digits, 8+ chars)
+  s = s.replace(/\s+[X\d]{8,}\s*$/i, '');
+
+  // Strip trailing US state abbreviation (+ optional ZIP)
+  s = s.replace(/\s+[A-Z]{2}(?:\s+\d{5}(?:-\d{4})?)?\s*$/i, '');
+
+  // Strip confirmation / reference numbers (case-insensitive, any separator)
+  s = s.replace(/[;,]?\s*\b(?:conf(?:irmation)?|ref(?:erence)?|trans(?:action)?\s*id)\b\s*#?\s*[A-Z0-9]{3,}/gi, '');
+
+  // Strip surrounding quotes
+  s = s.replace(/[''""]/g, '');
+
+  // Strip trailing punctuation and whitespace
+  s = s.replace(/[;,\s]+$/, '');
+
+  return s.replace(/\s+/g, ' ').trim() || description;
+}
+
+/**
  * Extract the human/business sender name from a payment-rail description.
  * Returns null when the description does not start with a recognized payment-rail prefix
  * (so non-payment transactions are not falsely labelled with a payer_name).
@@ -405,13 +442,15 @@ function predictFallback(tx, training, rules, tenants) {
 // ── Main predictAll ───────────────────────────────────────────────────────────
 
 async function predictAll() {
-  // Ensure all transactions have a normalized_description
+  // Ensure all transactions have normalized_description and display_description
   const { rows: missing } = await db.query(
-    'SELECT id, description FROM transactions WHERE normalized_description IS NULL'
+    'SELECT id, description FROM transactions WHERE normalized_description IS NULL OR display_description IS NULL'
   );
   for (const row of missing) {
-    await db.query('UPDATE transactions SET normalized_description=$1 WHERE id=$2',
-      [normalizeDescription(row.description), row.id]);
+    await db.query(
+      'UPDATE transactions SET normalized_description=COALESCE(normalized_description,$1), display_description=COALESCE(display_description,$2) WHERE id=$3',
+      [normalizeDescription(row.description), computeDisplayDescription(row.description), row.id]
+    );
   }
 
   // Ensure income transactions have a payer_name
@@ -559,4 +598,4 @@ async function predictAll() {
   };
 }
 
-module.exports = { predictAll, normalizeDescription, extractSenderName, jaccardSimilarity };
+module.exports = { predictAll, normalizeDescription, computeDisplayDescription, extractSenderName, jaccardSimilarity };

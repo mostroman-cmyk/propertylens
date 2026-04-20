@@ -425,7 +425,7 @@ export default function Dashboard() {
                 {transactions.slice(0, 50).map((tx) => (
                   <tr key={tx.id}>
                     <td className="nowrap mono" style={{ fontSize: 12 }}>{fmtDate(tx.date)}</td>
-                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.description}</td>
+                    <td style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={tx.description}>{tx.display_description || tx.description}</td>
                     <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                     <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
                     <td className="nowrap" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>

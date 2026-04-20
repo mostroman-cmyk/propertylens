@@ -274,7 +274,7 @@ export default function ReviewClassifications() {
                 <td className="nowrap mono" style={{ fontSize: 11 }}>
                   {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' })}
                 </td>
-                <td className="col-desc" title={tx.description}>{tx.description}</td>
+                <td className="col-desc" title={tx.description}>{tx.display_description || tx.description}</td>
                 <td className="num mono">${Math.abs(parseFloat(tx.amount)).toLocaleString()}</td>
                 <td className="nowrap"><span className={`badge ${tx.type}`}>{tx.type}</span></td>
 
