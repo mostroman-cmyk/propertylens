@@ -283,7 +283,7 @@ export default function Transactions() {
           <button className="btn-secondary" onClick={() => handleBulkCategorize(false)}>Apply Rules</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All</button>
           {ambiguousAssignedCount > 0 && (
-            <button className="btn-secondary" onClick={handleResetAmbiguous} style={{ borderColor: '#F59E0B', color: '#B45309' }}>
+            <button className="btn-warning" onClick={handleResetAmbiguous}>
               Reset Ambiguous Tenant Assignments
             </button>
           )}

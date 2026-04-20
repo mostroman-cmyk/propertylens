@@ -314,9 +314,9 @@ export default function Predictions() {
                   </div>
                   {items.length > 1 && (
                     <button
+                      className="btn-primary"
                       onClick={() => handleBulkAccept(items.map(i => i.id), key)}
                       disabled={bulkAccepting === key}
-                      style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '3px 10px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
                     >
                       {bulkAccepting === key ? 'Accepting...' : `Accept all ${items.length}`}
                     </button>
@@ -344,25 +344,13 @@ export default function Predictions() {
                         </td>
                         <td className="nowrap">
                           <div style={{ display: 'flex', gap: 4, position: 'relative' }}>
-                            <button
-                              onClick={() => handleAccept(tx)}
-                              style={{ background: '#000', color: '#fff', border: '1px solid #000', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, fontWeight: 600 }}
-                              title="Accept"
-                            >✓</button>
-                            <button
-                              onClick={() => handleReject(tx)}
-                              style={{ background: 'none', border: '1px solid #E30613', color: '#E30613', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12 }}
-                              title="Reject"
-                            >✗</button>
-                            <button
-                              onClick={() => openEdit(tx)}
-                              style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#666' }}
-                              title="Edit then accept"
-                            >✎</button>
+                            <button className="btn-edit btn-accept" onClick={() => handleAccept(tx)} title="Accept">✓</button>
+                            <button className="btn-edit btn-reject" onClick={() => handleReject(tx)} title="Reject">✗</button>
+                            <button className="btn-edit" onClick={() => openEdit(tx)} title="Edit then accept">✎</button>
                             <div style={{ position: 'relative' }}>
                               <button
+                                className="btn-edit"
                                 onClick={() => setActivePopover(ap => ap === tx.id ? null : tx.id)}
-                                style={{ background: 'none', border: '1px solid #E5E5E5', borderRadius: 2, padding: '2px 8px', cursor: 'pointer', fontSize: 12, color: '#999' }}
                                 title="Why this prediction?"
                               >ⓘ</button>
                               {activePopover === tx.id && (

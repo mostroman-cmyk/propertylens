@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-export default function Modal({ title, onClose, onSave, saveLabel = 'Save', saving = false, error, children }) {
+export default function Modal({ title, onClose, onSave, saveLabel = 'Save', saving = false, error, width, children }) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', handler);
@@ -9,7 +9,7 @@ export default function Modal({ title, onClose, onSave, saveLabel = 'Save', savi
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={e => e.stopPropagation()}>
+      <div className="modal" style={width ? { width } : undefined} onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{title}</h2>
           <button className="modal-close" onClick={onClose}>&#215;</button>

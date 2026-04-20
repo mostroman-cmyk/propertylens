@@ -292,24 +292,37 @@ tr:hover td { background: #FAFAFA; }
   margin-bottom: 20px;
 }
 
-button, .btn-primary, .btn-secondary, .btn-edit, .btn-sm, .btn-danger {
+/* Shared base — all buttons get this */
+button,
+.btn-primary, .btn-secondary, .btn-danger, .btn-warning,
+.btn-ghost, .btn-edit, .btn-sm {
   font-family: 'Inter', 'Helvetica Neue', sans-serif;
-  font-size: 13px;
   font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
   cursor: pointer;
   border-radius: 2px;
-  padding: 6px 14px;
-  line-height: 1.4;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
-  transition: background 0.08s, color 0.08s;
+  transition: background 0.08s, color 0.08s, border-color 0.08s;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* Page-level action buttons — 32px tall */
+.btn-primary, .btn-secondary, .btn-danger, .btn-warning {
+  font-size: 12px;
+  height: 32px;
+  padding: 0 16px;
+  border: 1px solid transparent;
 }
 
 .btn-primary {
   background: #000;
   color: #fff;
-  border: 1px solid #000;
+  border-color: #000;
 }
 .btn-primary:hover    { background: #333; border-color: #333; }
 .btn-primary:disabled { background: #999; border-color: #999; cursor: not-allowed; }
@@ -317,39 +330,97 @@ button, .btn-primary, .btn-secondary, .btn-edit, .btn-sm, .btn-danger {
 .btn-secondary {
   background: #fff;
   color: #000;
-  border: 1px solid #000;
+  border-color: #000;
 }
 .btn-secondary:hover    { background: #F5F5F5; }
 .btn-secondary:disabled { opacity: 0.45; cursor: not-allowed; }
 
+/* Danger — solid red fill per design spec */
+.btn-danger {
+  background: #E30613;
+  color: #fff;
+  border-color: #E30613;
+}
+.btn-danger:hover    { background: #c0000e; border-color: #c0000e; }
+.btn-danger:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Ghost — no bg/border, text only, for secondary actions */
+.btn-ghost {
+  background: none;
+  border: none;
+  color: #000;
+  font-size: 12px;
+  height: 32px;
+  padding: 0 10px;
+}
+.btn-ghost:hover    { text-decoration: underline; text-underline-offset: 2px; }
+.btn-ghost:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Compact buttons — 26px, used in table rows and inline contexts */
+.btn-edit, .btn-sm {
+  font-size: 11px;
+  height: 26px;
+  padding: 0 10px;
+}
+
 .btn-edit {
   background: #fff;
-  color: #666;
+  color: #555;
   border: 1px solid #E5E5E5;
-  font-size: 11px;
-  padding: 3px 10px;
 }
 .btn-edit:hover { border-color: #000; color: #000; }
 
-.btn-danger {
-  background: #fff;
-  color: #E30613;
-  border: 1px solid #E30613;
-  font-size: 11px;
-  padding: 3px 10px;
-}
-.btn-danger:hover { background: #E30613; color: #fff; }
-
 .btn-sm {
-  font-size: 11px;
-  padding: 4px 10px;
   background: #fff;
   color: #000;
   border: 1px solid #000;
 }
-.btn-sm:hover { background: #F5F5F5; }
+.btn-sm:hover    { background: #F5F5F5; }
+.btn-sm:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Warning — amber outline, for destructive-but-recoverable actions */
+.btn-warning {
+  background: #fff;
+  color: #B45309;
+  border-color: #F59E0B;
+}
+.btn-warning:hover    { background: #FFFBEB; }
+.btn-warning:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Modifier — pair with btn-edit for compact accept/reject row actions */
+.btn-edit.btn-accept { background: #000; color: #fff; border-color: #000; }
+.btn-edit.btn-accept:hover { background: #333; border-color: #333; }
+.btn-edit.btn-reject { color: #E30613; border-color: #E30613; }
+.btn-edit.btn-reject:hover { background: #E30613; color: #fff; }
 
 /* ── FORMS ─────────────────────────────────────────────────────────── */
+
+/* FormField component */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-bottom: 14px;
+}
+.form-field:last-child { margin-bottom: 0; }
+
+.form-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: #666;
+}
+
+.form-error {
+  font-size: 11px;
+  color: #E30613;
+}
+
+.form-helper {
+  font-size: 11px;
+  color: #888;
+}
 
 .form-group {
   display: flex;
