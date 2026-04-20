@@ -155,109 +155,175 @@ function BulkFixModal({ group, properties, tenants, onClose, onFixed }) {
   const dispDesc = first.display_description || first.description;
 
   // Detect whether amounts vary in this group
-  const amounts = [...new Set(items.map(tx => Math.abs(parseFloat(tx.amount))))];
+  const amounts = [...new Set(items.map(tx => Math.abs(parseFloat(tx.amount))))].sort((a, b) => a - b);
   const amountsVary = amounts.length > 1;
 
   const [form, setForm] = useState({
-    category:       first.predicted_category || '',
-    property_scope: first.predicted_property_scope || 'single',
-    property_id:    first.predicted_property_id ? String(first.predicted_property_id) : '',
-    tenant_id:      first.predicted_tenant_id   ? String(first.predicted_tenant_id)   : '',
-    fix_historical: true,
-    amount_filter:  amountsVary ? String(Math.abs(parseFloat(first.amount))) : '',
+    category:           first.predicted_category || '',
+    property_scope:     first.predicted_property_scope || 'single',
+    property_id:        first.predicted_property_id ? String(first.predicted_property_id) : '',
+    tenant_id:          first.predicted_tenant_id   ? String(first.predicted_tenant_id)   : '',
+    amount_filter:      amountsVary ? String(Math.abs(parseFloat(first.amount))) : '',
+    apply_to_group:     true,
+    fix_historical:     true,
+    save_as_rule:       true,
+    rerun_predictions:  true,
   });
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState(null);
+  const [error, setError]   = useState(null);
 
   const handleSave = async () => {
     setSaving(true);
+    setError(null);
     try {
       const res = await bulkFixPredictions({
-        norm_key:      key,
-        category:      form.category || null,
-        property_id:   form.property_scope === 'portfolio' ? null : (form.property_id || null),
-        property_scope: form.property_scope,
-        tenant_id:     form.tenant_id || null,
-        fix_historical: form.fix_historical,
-        amount_filter: form.amount_filter !== '' ? parseFloat(form.amount_filter) : null,
+        norm_key:          key,
+        category:          form.category || null,
+        property_id:       form.property_scope === 'portfolio' ? null : (form.property_id || null),
+        property_scope:    form.property_scope,
+        tenant_id:         form.tenant_id || null,
+        fix_historical:    form.fix_historical,
+        save_as_rule:      form.save_as_rule,
+        rerun_predictions: form.rerun_predictions,
+        amount_filter:     form.amount_filter !== '' ? parseFloat(form.amount_filter) : null,
       });
       setResult(res);
-      setTimeout(() => { onFixed(res); onClose(); }, 1200);
+      setTimeout(() => { onFixed(res); onClose(); }, 1500);
     } catch (err) {
+      setError(err?.response?.data?.error || err?.message || 'Failed to apply fix');
       setSaving(false);
     }
   };
 
+  const sectionLabel = {
+    fontSize: 10, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
+    color: '#888', marginBottom: 10, marginTop: 18, borderBottom: '1px solid #E5E5E5', paddingBottom: 4,
+  };
+  const checkRow = { display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 8 };
+  const checkNote = { fontSize: 11, color: '#888', paddingLeft: 22, marginTop: -4, marginBottom: 8 };
+
   return (
-    <Modal title="Fix Prediction Group" onClose={onClose} onSave={result ? null : handleSave} saveLabel="Apply Fix" width={560}>
-      <div style={{ fontSize: 13, color: '#333', marginBottom: 16, padding: '8px 12px', background: '#F5F5F5', borderRadius: 2 }}>
-        <strong>{dispDesc}</strong>
-        <span style={{ marginLeft: 10, fontSize: 12, color: '#888' }}>{items.length} transaction{items.length !== 1 ? 's' : ''}</span>
+    <Modal
+      title={`Fix Group: ${dispDesc} — ${items.length} transaction${items.length !== 1 ? 's' : ''}`}
+      onClose={onClose}
+      onSave={result ? null : handleSave}
+      saveLabel="Apply Fix"
+      saving={saving}
+      width={600}
+    >
+      {/* SUMMARY */}
+      <div style={sectionLabel}>Summary</div>
+      <div style={{ fontSize: 13, color: '#333', padding: '8px 12px', background: '#F5F5F5', borderRadius: 2, marginBottom: 4 }}>
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          <span><strong>{items.length}</strong> pending prediction{items.length !== 1 ? 's' : ''}</span>
+          {first.predicted_category && <span>Category: <strong>{first.predicted_category}</strong></span>}
+          {(first.predicted_property_name || first.predicted_property_scope === 'portfolio') && (
+            <span>Property: <strong>{first.predicted_property_scope === 'portfolio' ? 'All Properties' : first.predicted_property_name}</strong></span>
+          )}
+          {first.predicted_tenant_name && <span>Tenant: <strong>{first.predicted_tenant_name}</strong></span>}
+        </div>
         {amountsVary && (
-          <div style={{ marginTop: 6, fontSize: 12, color: '#B45309', background: '#FEF9C3', padding: '4px 8px', borderRadius: 2 }}>
-            ⚠ This group has {amounts.length} different amounts: {amounts.map(a => `$${a.toLocaleString()}`).join(', ')}.
-            To assign each amount to a different property, use <strong>Merchant Rules</strong> instead.
-            You can still bulk-fix by filtering to a specific amount below.
+          <div style={{ marginTop: 8, fontSize: 12, color: '#B45309', background: '#FEF9C3', padding: '4px 8px', borderRadius: 2 }}>
+            ⚠ {amounts.length} different amounts: {amounts.map(a => `$${a.toLocaleString()}`).join(', ')}.
+            Use <strong>Merchant Rules</strong> to route each amount to a different property.
+            Or filter below to fix one amount at a time.
           </div>
         )}
       </div>
 
+      {/* SET CORRECT VALUES */}
+      <div style={sectionLabel}>Set Correct Values</div>
+
       {amountsVary && (
         <div className="form-group">
-          <label>Filter to Amount (optional — blank = fix all amounts)</label>
+          <label>Filter to Specific Amount</label>
           <select className="form-input" value={form.amount_filter}
             onChange={e => setForm(f => ({ ...f, amount_filter: e.target.value }))}>
-            <option value="">All amounts</option>
+            <option value="">All amounts (fix entire group)</option>
             {amounts.map(a => <option key={a} value={a}>${a.toLocaleString()}</option>)}
           </select>
         </div>
       )}
 
-      <div className="form-group">
-        <label>Category</label>
-        <select className="form-input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
-          <option value="">— Keep current —</option>
-          {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-        </select>
+      <div className="form-row" style={{ gap: 10, flexWrap: 'wrap' }}>
+        <div className="form-group" style={{ flex: '1 1 140px', minWidth: 0 }}>
+          <label>Category</label>
+          <select className="form-input" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))}>
+            <option value="">— Keep current —</option>
+            {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="form-group" style={{ flex: '2 1 180px', minWidth: 0 }}>
+          <label>Property</label>
+          <select
+            className="form-input"
+            value={form.property_scope === 'portfolio' ? 'portfolio' : (form.property_id || '')}
+            onChange={e => {
+              if (e.target.value === 'portfolio') {
+                setForm(f => ({ ...f, property_scope: 'portfolio', property_id: '' }));
+              } else {
+                setForm(f => ({ ...f, property_scope: 'single', property_id: e.target.value }));
+              }
+            }}
+          >
+            <option value="">— Keep current —</option>
+            <option value="portfolio">🏘 All Properties (Portfolio)</option>
+            <option disabled>──────────────</option>
+            {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div className="form-group" style={{ flex: '1 1 140px', minWidth: 0 }}>
+          <label>Tenant</label>
+          <select className="form-input" value={form.tenant_id} onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}>
+            <option value="">— Keep current —</option>
+            {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+        </div>
       </div>
-      <div className="form-group">
-        <label>Property</label>
-        <select
-          className="form-input"
-          value={form.property_scope === 'portfolio' ? 'portfolio' : (form.property_id || '')}
-          onChange={e => {
-            if (e.target.value === 'portfolio') {
-              setForm(f => ({ ...f, property_scope: 'portfolio', property_id: '' }));
-            } else {
-              setForm(f => ({ ...f, property_scope: 'single', property_id: e.target.value }));
-            }
-          }}
-        >
-          <option value="">— Keep current —</option>
-          <option value="portfolio">🏘 All Properties (Portfolio)</option>
-          <option disabled>──────────────</option>
-          {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-        </select>
-      </div>
-      <div className="form-group">
-        <label>Tenant</label>
-        <select className="form-input" value={form.tenant_id} onChange={e => setForm(f => ({ ...f, tenant_id: e.target.value }))}>
-          <option value="">— Keep current —</option>
-          {tenants.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-        </select>
-      </div>
-      <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer', marginBottom: 4 }}>
+
+      {/* OPTIONS */}
+      <div style={sectionLabel}>Options</div>
+
+      <label style={checkRow}>
+        <input type="checkbox" checked={form.apply_to_group}
+          onChange={e => setForm(f => ({ ...f, apply_to_group: e.target.checked }))} />
+        Apply to all {items.length} transaction{items.length !== 1 ? 's' : ''} in this group
+      </label>
+
+      <label style={checkRow}>
         <input type="checkbox" checked={form.fix_historical}
           onChange={e => setForm(f => ({ ...f, fix_historical: e.target.checked }))} />
-        Also fix historical classified transactions with this pattern
+        Update past classified transactions with this pattern too
       </label>
-      <div style={{ fontSize: 11, color: '#888', marginBottom: 12, paddingLeft: 22 }}>
-        Rewrites past accepted classifications that have a different value — corrects bad training data.
-      </div>
+      <div style={checkNote}>Corrects bad training data so the model learns the right answer.</div>
+
+      <label style={checkRow}>
+        <input type="checkbox" checked={form.save_as_rule}
+          onChange={e => setForm(f => ({ ...f, save_as_rule: e.target.checked }))} />
+        Save as permanent rule for future transactions
+      </label>
+      <div style={checkNote}>Creates a Merchant Rule entry that overrides all prediction logic going forward.</div>
+
+      <label style={checkRow}>
+        <input type="checkbox" checked={form.rerun_predictions}
+          onChange={e => setForm(f => ({ ...f, rerun_predictions: e.target.checked }))} />
+        Re-run predictions after applying
+      </label>
+      <div style={checkNote}>Updates all pending predictions immediately using the corrected data.</div>
+
+      {error && (
+        <div style={{ padding: '8px 12px', background: '#FEE2E2', borderRadius: 2, fontSize: 13, color: '#DC2626', marginTop: 8 }}>
+          {error}
+        </div>
+      )}
+
       {result && (
-        <div style={{ padding: '8px 12px', background: '#DCFCE7', borderRadius: 2, fontSize: 13, color: '#16A34A' }}>
-          Fixed {result.predictions_updated} prediction(s)
-          {result.historical_updated > 0 ? ` + ${result.historical_updated} historical transaction(s)` : ''}. Re-predicting...
+        <div style={{ padding: '8px 12px', background: '#DCFCE7', borderRadius: 2, fontSize: 13, color: '#16A34A', marginTop: 8 }}>
+          Fixed {result.predictions_updated} prediction{result.predictions_updated !== 1 ? 's' : ''}
+          {result.historical_updated > 0 ? ` + ${result.historical_updated} historical` : ''}
+          {result.rule_created ? ' · Rule saved' : ''}.
+          {form.rerun_predictions ? ' Re-predicting...' : ''}
         </div>
       )}
     </Modal>

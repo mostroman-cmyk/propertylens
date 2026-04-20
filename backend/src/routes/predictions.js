@@ -226,7 +226,7 @@ router.get('/misclassified-patterns', async (req, res) => {
 
 // Bulk fix: correct predictions for a group and optionally fix historical misclassifications
 router.post('/bulk-fix', async (req, res) => {
-  const { norm_key, category, property_id, property_scope, tenant_id, fix_historical, amount_filter } = req.body;
+  const { norm_key, category, property_id, property_scope, tenant_id, fix_historical, amount_filter, save_as_rule, rerun_predictions } = req.body;
   if (!norm_key) return res.status(400).json({ error: 'norm_key required' });
 
   const effectivePropId = property_scope === 'portfolio' ? null : (property_id || null);
@@ -244,7 +244,7 @@ router.post('/bulk-fix', async (req, res) => {
     const predParams = [category || null, effectivePropId, effectiveScope, tenant_id || null, norm_key];
 
     if (amount_filter != null) {
-      predQuery += ` AND ABS(amount::numeric - $6) <= 2`;
+      predQuery += ` AND ABS(ABS(amount::numeric) - $6) <= 2`;
       predParams.push(parseFloat(amount_filter));
     }
 
@@ -266,7 +266,7 @@ router.post('/bulk-fix', async (req, res) => {
       const histParams = [category || null, effectivePropId, effectiveScope, tenant_id || null, norm_key];
 
       if (amount_filter != null) {
-        histQuery += ` AND ABS(amount::numeric - $6) <= 2`;
+        histQuery += ` AND ABS(ABS(amount::numeric) - $6) <= 2`;
         histParams.push(parseFloat(amount_filter));
       }
 
@@ -274,10 +274,30 @@ router.post('/bulk-fix', async (req, res) => {
       histUpdated = rowCount;
     }
 
-    res.json({ predictions_updated: predUpdated, historical_updated: histUpdated });
+    // Save as permanent merchant rule
+    let ruleCreated = false;
+    if (save_as_rule && norm_key) {
+      const keyword = norm_key.split(' ').filter(w => w.length > 2).slice(0, 4).join(' ').toUpperCase() || norm_key.toUpperCase();
+      await db.query(`
+        INSERT INTO pattern_amount_rules (merchant_pattern, amount, amount_tolerance, category, property_id, property_scope, tenant_id, note)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `, [
+        keyword,
+        amount_filter != null ? parseFloat(amount_filter) : null,
+        amount_filter != null ? 2 : null,
+        category || null,
+        effectivePropId,
+        effectiveScope,
+        tenant_id || null,
+        `Auto-created via Fix Group for: ${norm_key}`,
+      ]).catch(() => {}); // ignore duplicate errors
+      ruleCreated = true;
+    }
 
-    // Background re-predict after fixing training data
-    if (histUpdated > 0) {
+    res.json({ predictions_updated: predUpdated, historical_updated: histUpdated, rule_created: ruleCreated });
+
+    // Background re-predict
+    if (rerun_predictions || histUpdated > 0) {
       setImmediate(() => predictAll().catch(console.error));
     }
   } catch (err) {

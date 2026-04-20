@@ -20,9 +20,11 @@ export default function Modal({ title, onClose, onSave, saveLabel = 'Save', savi
         </div>
         <div className="modal-footer">
           <button className="btn-secondary" onClick={onClose} disabled={saving}>Cancel</button>
-          <button className="btn-primary" onClick={onSave} disabled={saving}>
-            {saving ? 'Saving...' : saveLabel}
-          </button>
+          {onSave != null && (
+            <button className="btn-primary" onClick={onSave} disabled={saving}>
+              {saving ? 'Saving...' : saveLabel}
+            </button>
+          )}
         </div>
       </div>
     </div>
