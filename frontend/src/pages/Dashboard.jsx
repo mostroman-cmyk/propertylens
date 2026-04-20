@@ -472,7 +472,7 @@ export default function Dashboard() {
 
       <div className="split-layout">
         {/* ── Recent Transactions ── */}
-        <div style={{ minWidth: 0, flex: '1 1 0', order: 2 }}>
+        <div className="dashboard-tx-panel" style={{ minWidth: 0, flex: '1 1 0', order: 2 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>
               Recent Transactions
@@ -571,13 +571,13 @@ export default function Dashboard() {
 
           <table className="mobile-cards" style={{ tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
-              <col /><col style={{ width: 78 }} /><col style={{ width: 62 }} /><col style={{ width: 90 }} />
+              <col /><col style={{ width: 90 }} /><col style={{ width: 102 }} /><col style={{ width: 76 }} />
             </colgroup>
             <thead>
               <tr>
                 <th>Tenant</th>
                 <th className="num">Rent</th>
-                <th>Paid</th>
+                <th>Paid Date</th>
                 <th>Status</th>
               </tr>
             </thead>

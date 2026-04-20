@@ -1381,6 +1381,25 @@ button,
   .topbar-date { display: none; }
 }
 
+/* ── DASHBOARD SECTION SEPARATOR ────────────────────────────────────── */
+
+/* Desktop: thin left border between Rent Status (left) and Recent Tx (right) */
+@media (min-width: 1025px) {
+  .dashboard-tx-panel {
+    border-left: 1px solid #E5E5E5;
+    padding-left: 28px;
+  }
+}
+
+/* Mobile/tablet: top border when sections stack vertically */
+@media (max-width: 1024px) {
+  .dashboard-tx-panel {
+    border-top: 2px solid #E5E5E5;
+    padding-top: 20px;
+    margin-top: 4px;
+  }
+}
+
 /* ── TAB BAR ─────────────────────────────────────────────────────────── */
 
 .tab-bar {
