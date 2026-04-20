@@ -439,6 +439,12 @@ async function migrate() {
     }
   } catch {}
 
+  // Former tenant support
+  await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'active'`);
+  await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS lease_start_date DATE`);
+  await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS lease_end_date DATE`);
+  await db.query(`ALTER TABLE tenants ADD COLUMN IF NOT EXISTS notes TEXT`);
+
   console.log('[migrate] Database ready');
 
   // Fire-and-forget: re-predict using updated payer patterns and fixed normalization

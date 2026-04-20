@@ -11,7 +11,7 @@ export const getProperties   = ()         => api.get('/properties').then(r => r.
 export const createProperty  = (data)     => api.post('/properties', data).then(r => r.data);
 export const updateProperty  = (id, data) => api.put(`/properties/${id}`, data).then(r => r.data);
 
-export const getTenants      = ()         => api.get('/tenants').then(r => r.data);
+export const getTenants      = (params)   => api.get('/tenants', { params }).then(r => r.data);
 export const createTenant    = (data)     => api.post('/tenants', data).then(r => r.data);
 export const updateTenant    = (id, data) => api.put(`/tenants/${id}`, data).then(r => r.data);
 

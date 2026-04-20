@@ -84,6 +84,9 @@ export default function Settings() {
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
 
+  // Account Selection collapsed by default
+  const [accountSelectionOpen, setAccountSelectionOpen] = useState(false);
+
   // Per-connection actions
   const [menuOpen, setMenuOpen] = useState(null);
   const [perConnSyncing, setPerConnSyncing] = useState({});
@@ -396,6 +399,15 @@ export default function Settings() {
 
   const days = Array.from({ length: 28 }, (_, i) => i + 1);
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
+
+  // Account Selection summary for collapsed state
+  const allEnabledAccounts = connections.flatMap(conn =>
+    (connectionAccounts[conn.id] || []).filter(a => (conn.enabled_account_ids || []).includes(a.account_id))
+  );
+  const accountSelectionSummary = allEnabledAccounts.length > 0
+    ? `${allEnabledAccounts.length} account${allEnabledAccounts.length !== 1 ? 's' : ''} selected: ${allEnabledAccounts.map(a => `${a.name} ····${a.mask}`).join(', ')}`
+    : 'No accounts selected — configure sync below';
+  const accountSectionOpen = accountSelectionOpen || !!accountConfirm || !!fullResync;
 
   // Detect duplicate connections (same institution name)
   const byInstitution = {};
@@ -742,11 +754,33 @@ export default function Settings() {
         )}
       </div>
 
-      {/* ── SECTION 4: ACCOUNT SELECTION ── */}
+      {/* ── SECTION 4: ACCOUNT SELECTION (collapsible) ── */}
       {connections.length > 0 && (
         <div className="settings-section">
-          <div className="settings-section-title">Account Selection</div>
-          <p className="settings-section-desc">Choose which accounts to include when syncing transactions.</p>
+          <div
+            className="settings-collapse-header"
+            onClick={() => setAccountSelectionOpen(o => !o)}
+          >
+            <div style={{ flex: 1 }}>
+              <div className="settings-section-title" style={{ marginBottom: accountSectionOpen ? undefined : 4 }}>
+                Account Selection
+              </div>
+              {!accountSectionOpen && (
+                <p className="settings-section-desc" style={{ margin: 0 }}>{accountSelectionSummary}</p>
+              )}
+            </div>
+            <span
+              className="settings-collapse-chevron"
+              style={{ transform: accountSectionOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}
+            >›</span>
+          </div>
+
+          <div
+            className="settings-collapse-body"
+            style={{ maxHeight: accountSectionOpen ? '4000px' : 0 }}
+          >
+            <div style={{ paddingTop: 12 }}>
+              <p className="settings-section-desc">Choose which accounts to include when syncing transactions.</p>
 
           {accountConfirm && (
             <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
@@ -871,6 +905,9 @@ export default function Settings() {
               Removes any transactions linked to Plaid accounts that are no longer in your selection list.
             </p>
           </div>
+
+            </div>{/* end collapse body inner */}
+          </div>{/* end settings-collapse-body */}
         </div>
       )}
 

@@ -10,7 +10,15 @@ const WITH_PROPERTY = `
 
 router.get('/', async (req, res) => {
   try {
-    const result = await db.query(WITH_PROPERTY + ' ORDER BY p.id, t.unit');
+    const { status } = req.query;
+    let query = WITH_PROPERTY;
+    const params = [];
+    if (status) {
+      query += ` WHERE (t.status = $1 OR ($1 = 'active' AND t.status IS NULL))`;
+      params.push(status);
+    }
+    query += ' ORDER BY p.id, t.unit';
+    const result = await db.query(query, params);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -30,13 +38,15 @@ router.get('/property/:propertyId', async (req, res) => {
 });
 
 router.post('/', async (req, res) => {
-  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms } = req.body;
+  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms, status, lease_start_date, lease_end_date, notes } = req.body;
   if (!property_id || !name || !unit || monthly_rent == null)
     return res.status(400).json({ error: 'property_id, name, unit, monthly_rent are required' });
   try {
     const result = await db.query(
-      'INSERT INTO tenants (property_id, name, unit, monthly_rent, bedrooms_bathrooms) VALUES ($1, $2, $3, $4, $5) RETURNING *',
-      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null]
+      `INSERT INTO tenants (property_id, name, unit, monthly_rent, bedrooms_bathrooms, status, lease_start_date, lease_end_date, notes)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null,
+       status || 'active', lease_start_date || null, lease_end_date || null, notes || null]
     );
     const id = result.rows[0]?.id;
     const full = await db.query(WITH_PROPERTY + ' WHERE t.id = $1', [id]);
@@ -47,13 +57,15 @@ router.post('/', async (req, res) => {
 });
 
 router.put('/:id', async (req, res) => {
-  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms } = req.body;
+  const { property_id, name, unit, monthly_rent, bedrooms_bathrooms, status, lease_start_date, lease_end_date, notes } = req.body;
   if (!property_id || !name || !unit || monthly_rent == null)
     return res.status(400).json({ error: 'property_id, name, unit, monthly_rent are required' });
   try {
     await db.query(
-      'UPDATE tenants SET property_id=$1, name=$2, unit=$3, monthly_rent=$4, bedrooms_bathrooms=$5 WHERE id=$6',
-      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null, req.params.id]
+      `UPDATE tenants SET property_id=$1, name=$2, unit=$3, monthly_rent=$4, bedrooms_bathrooms=$5,
+       status=$6, lease_start_date=$7, lease_end_date=$8, notes=$9 WHERE id=$10`,
+      [property_id, name, unit, monthly_rent, bedrooms_bathrooms || null,
+       status || 'active', lease_start_date || null, lease_end_date || null, notes || null, req.params.id]
     );
     const full = await db.query(WITH_PROPERTY + ' WHERE t.id = $1', [req.params.id]);
     if (!full.rows.length) return res.status(404).json({ error: 'Not found' });

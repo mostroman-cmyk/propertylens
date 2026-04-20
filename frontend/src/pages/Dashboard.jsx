@@ -254,6 +254,9 @@ export default function Dashboard() {
   if (loading) return <div className="loading">Loading...</div>;
   if (error) return <div className="error">Error: {error}</div>;
 
+  // Active tenants only — used for rent status and outstanding calculations
+  const activeTenants = tenants.filter(t => !t.status || t.status === 'active');
+
   // ── Filter rent months (for rent_month-based KPIs) ─────────────────────────
   // Returns null for 'all' (indeterminate), array of YYYY-MM for everything else
   const filterRentMonths = getMonthsInRange(startDate, endDate);
@@ -282,7 +285,7 @@ export default function Dashboard() {
   if (filterRentMonths) {
     outstandingByRM = 0;
     for (const rm of filterRentMonths) {
-      for (const tenant of tenants) {
+      for (const tenant of activeTenants) {
         const hasPaid = allTransactions.some(tx =>
           tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === rm
         );
@@ -295,7 +298,7 @@ export default function Dashboard() {
   }
 
   // Expected total rent (for display in COLLECTED label)
-  const totalMonthlyRent = tenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
+  const totalMonthlyRent = activeTenants.reduce((sum, t) => sum + parseFloat(t.monthly_rent), 0);
   const expectedRentForPeriod = filterRentMonths ? filterRentMonths.length * totalMonthlyRent : null;
 
   // Other KPIs (date-filtered)
@@ -309,7 +312,7 @@ export default function Dashboard() {
   const unmatchedIncome = allTransactions.filter(tx => tx.type === 'income' && !tx.tenant_id).length;
 
   // Build per-tenant rent status with shortfall detection
-  const rentStatus = tenants.map(tenant => {
+  const rentStatus = activeTenants.map(tenant => {
     const paidTxs = allTransactions.filter(tx =>
       tx.type === 'income' && tx.tenant_id === tenant.id && tx.rent_month === selectedMonth
     );
@@ -332,7 +335,7 @@ export default function Dashboard() {
   const paidCount     = rentStatus.filter(r => r.paid).length;
   const unpaidTenants = rentStatus.filter(r => !r.paid);
   const rentOutstanding = unpaidTenants.reduce((s, r) => s + parseFloat(r.tenant.monthly_rent), 0);
-  const paidPct = tenants.length > 0 ? Math.round((paidCount / tenants.length) * 100) : 0;
+  const paidPct = activeTenants.length > 0 ? Math.round((paidCount / activeTenants.length) * 100) : 0;
 
   const selectedMonthLabel = MONTH_OPTIONS.find(o => o.val === selectedMonth)?.label || selectedMonth;
   const alertClass = { success: 'alert-success', info: 'alert-info', warn: 'alert-warn', error: 'alert-error' };
@@ -380,13 +383,13 @@ export default function Dashboard() {
           {unpaidTenants.map(r => r.tenant.name).join(', ')} —{' '}
           <span className="mono">{formatMoney(rentOutstanding, { noCents: true })}</span> outstanding.
         </div>
-      ) : tenants.length > 0 ? (
+      ) : activeTenants.length > 0 ? (
         <div className="alert alert-success" style={{ marginBottom: 8 }}>
-          All {tenants.length} tenant{tenants.length !== 1 ? 's' : ''} paid for {selectedMonthLabel}.
+          All {activeTenants.length} tenant{activeTenants.length !== 1 ? 's' : ''} paid for {selectedMonthLabel}.
         </div>
       ) : null}
 
-      {tenants.length > 0 && (
+      {activeTenants.length > 0 && (
         <div style={{ fontSize: 12, color: '#888', marginBottom: 16 }}>
           Rent status for <strong>{selectedMonthLabel}</strong> — matched by <span className="mono">rent_month</span>, not deposit date.
         </div>
@@ -448,7 +451,7 @@ export default function Dashboard() {
               <OutstandingTooltip
                 breakdown={outstandingBreakdown}
                 filterRentMonths={filterRentMonths}
-                tenantCount={tenants.length}
+                tenantCount={activeTenants.length}
               />
             )}
           </div>
@@ -462,14 +465,14 @@ export default function Dashboard() {
         </div>
 
         <div className="kpi-item">
-          <div className="kpi-label">Tenants</div>
-          <div className="kpi-value muted">{tenants.length}</div>
+          <div className="kpi-label">Active Tenants</div>
+          <div className="kpi-value muted">{activeTenants.length}</div>
         </div>
       </div>
 
       <div className="split-layout">
         {/* ── Recent Transactions ── */}
-        <div style={{ minWidth: 0, flex: '1 1 0' }}>
+        <div style={{ minWidth: 0, flex: '1 1 0', order: 2 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>
               Recent Transactions
@@ -553,7 +556,7 @@ export default function Dashboard() {
         </div>
 
         {/* ── Rent Status ── */}
-        <div style={{ flexShrink: 0, minWidth: 0 }}>
+        <div style={{ flexShrink: 0, minWidth: 0, order: 1 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
             <h2 className="section-title" style={{ margin: 0 }}>Rent Status</h2>
             <select
@@ -579,10 +582,10 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody>
-              {tenants.length > 0 && (
+              {activeTenants.length > 0 && (
                 <tr style={{ background: '#F9F9F9', fontWeight: 600 }}>
                   <td data-label="" colSpan={2} style={{ fontSize: 12, paddingTop: 6, paddingBottom: 6 }}>
-                    {paidCount} / {tenants.length} PAID
+                    {paidCount} / {activeTenants.length} PAID
                   </td>
                   <td data-label="" colSpan={2} style={{ fontSize: 11, color: '#555', textAlign: 'right' }}>
                     {formatMoney(collectedForMonth)} of {formatMoney(totalMonthlyRent, { noCents: true })} ({paidPct}%)
@@ -625,8 +628,8 @@ export default function Dashboard() {
                   </td>
                 </tr>
               ))}
-              {tenants.length === 0 && (
-                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No tenants.</td></tr>
+              {activeTenants.length === 0 && (
+                <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No active tenants.</td></tr>
               )}
             </tbody>
           </table>
