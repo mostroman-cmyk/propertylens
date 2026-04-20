@@ -1,12 +1,15 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const path = require('path');
 const fs = require('fs');
 const migrate = require('./db/migrate');
 const seed    = require('./db/seed');
 const db      = require('./db/db');
 
+const authRouter                = require('./routes/auth');
+const authMiddleware            = require('./middleware/authMiddleware');
 const propertiesRouter          = require('./routes/properties');
 const tenantsRouter             = require('./routes/tenants');
 const transactionsRouter        = require('./routes/transactions');
@@ -26,10 +29,16 @@ const FRONTEND_DIST = path.join(__dirname, '../../frontend/dist');
 console.log('[static] Serving frontend from:', FRONTEND_DIST);
 console.log('[static] Dist folder exists:', fs.existsSync(FRONTEND_DIST));
 
-app.use(cors());
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
+app.use(cookieParser());
 
+// Public endpoints — no auth required
 app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'PropertyLens API' }));
+app.use('/api/auth', authRouter);
+
+// All remaining /api/* routes require a valid JWT cookie
+app.use('/api', authMiddleware);
 
 app.use('/api/properties',   propertiesRouter);
 app.use('/api/tenants',      tenantsRouter);

@@ -1,7 +1,11 @@
 import axios from 'axios';
 
 const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
-export const api = axios.create({ baseURL: `${BASE_URL}/api` });
+export const api = axios.create({ baseURL: `${BASE_URL}/api`, withCredentials: true });
+
+export const checkAuth  = ()         => api.get('/auth/me').then(r => r.data);
+export const login      = (password) => api.post('/auth/login', { password }).then(r => r.data);
+export const logout     = ()         => api.post('/auth/logout').then(r => r.data);
 
 export const getProperties   = ()         => api.get('/properties').then(r => r.data);
 export const createProperty  = (data)     => api.post('/properties', data).then(r => r.data);

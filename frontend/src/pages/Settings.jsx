@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { getSettings, updateSettings, api, syncOneConnection, disconnectBank, removeConnectionTransactions, mergeDuplicateConnections } from '../api';
+import { useAuth } from '../context/AuthContext';
 import ConnectBank from '../components/ConnectBank';
 import Toast, { useToast } from '../components/Toast';
 import LegacyCleanup from '../components/LegacyCleanup';
@@ -59,6 +60,7 @@ export default function Settings() {
   const [settings, setSettings] = useState(null);
   const [loading, setLoading] = useState(true);
   const { toast, showToast } = useToast();
+  const { logout } = useAuth();
 
   // Notifications state
   const [email, setEmail] = useState('');
@@ -887,6 +889,19 @@ export default function Settings() {
           <LegacyCleanup showToast={showToast} />
         </div>
       )}
+
+      {/* ── SECTION: ACCOUNT ── */}
+      <div className="settings-section">
+        <div className="settings-section-title">Account</div>
+        <p className="settings-section-desc">You are signed in to PropertyLens.</p>
+        <button
+          className="btn-secondary"
+          style={{ borderColor: '#E30613', color: '#E30613' }}
+          onClick={logout}
+        >
+          Sign Out
+        </button>
+      </div>
 
       <Toast message={toast} />
     </div>
