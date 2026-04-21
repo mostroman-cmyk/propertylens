@@ -279,7 +279,7 @@ tr:hover td { background: #FAFAFA; }
 .status-none   { font-size: 11px; color: #ccc; cursor: pointer; }
 
 /* old .badge kept for graceful fallback */
-.badge { display: inline; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+.badge { display: inline; font-size: 11px; font-weight: 600; letter-spacing: 0.04em; }
 .badge.income  { color: #000; }
 .badge.expense { color: #E30613; }
 
