@@ -80,13 +80,13 @@ function AuthenticatedApp() {
           </button>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-          <svg width="16" height="16" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-            <path d="M8 30 L32 12 L56 30 L56 54 L8 54Z" fill="#000"/>
-            <rect x="27" y="39" width="10" height="15" fill="#fff"/>
-            <rect x="13" y="33" width="9" height="9" rx="1" fill="#fff"/>
-            <rect x="42" y="33" width="9" height="9" rx="1" fill="#fff"/>
-            <circle cx="50" cy="50" r="11" fill="#fff" stroke="#000" strokeWidth="1.5"/>
-            <text x="50" y="55.5" fontFamily="Helvetica,Arial,sans-serif" fontSize="15" fontWeight="bold" textAnchor="middle" fill="#2D7A3E">$</text>
+          <svg width="18" height="18" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+            <path d="M4 28 L32 8 L60 28 L60 56 L4 56Z" fill="#000"/>
+            <rect x="26" y="40" width="12" height="16" fill="#fff"/>
+            <rect x="9" y="32" width="11" height="11" rx="1" fill="#fff"/>
+            <rect x="44" y="32" width="11" height="11" rx="1" fill="#fff"/>
+            <circle cx="52" cy="52" r="12" fill="#fff" stroke="#000" strokeWidth="1.5"/>
+            <text x="52" y="57.5" fontFamily="Helvetica,Arial,sans-serif" fontSize="16" fontWeight="bold" textAnchor="middle" fill="#2D7A3E">$</text>
           </svg>
           <span style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 12 }}>PROPERTYLENS</span>
         </div>

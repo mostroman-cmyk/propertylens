@@ -1,16 +1,16 @@
 <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <!-- House body -->
-  <path d="M8 30 L32 12 L56 30 L56 54 L8 54Z" fill="#000"/>
+  <!-- House body: fills ~88% of icon width -->
+  <path d="M4 28 L32 8 L60 28 L60 56 L4 56Z" fill="#000"/>
   <!-- Door -->
-  <rect x="27" y="39" width="10" height="15" fill="#fff"/>
+  <rect x="26" y="40" width="12" height="16" fill="#fff"/>
   <!-- Window left -->
-  <rect x="13" y="33" width="9" height="9" rx="1" fill="#fff"/>
+  <rect x="9" y="32" width="11" height="11" rx="1" fill="#fff"/>
   <!-- Window right -->
-  <rect x="42" y="33" width="9" height="9" rx="1" fill="#fff"/>
-  <!-- Badge: subtle shadow ring for dark-bg visibility -->
-  <circle cx="50" cy="50" r="13" fill="#000" opacity="0.12"/>
-  <!-- Badge: white circle with border -->
-  <circle cx="50" cy="50" r="11" fill="#fff" stroke="#000" stroke-width="1.5"/>
+  <rect x="44" y="32" width="11" height="11" rx="1" fill="#fff"/>
+  <!-- Badge shadow for dark-bg contrast -->
+  <circle cx="52" cy="52" r="14" fill="#000" opacity="0.12"/>
+  <!-- Badge circle -->
+  <circle cx="52" cy="52" r="12" fill="#fff" stroke="#000" stroke-width="1.5"/>
   <!-- Dollar sign -->
-  <text x="50" y="55.5" font-family="Helvetica,Arial,sans-serif" font-size="15" font-weight="bold" text-anchor="middle" fill="#2D7A3E">$</text>
+  <text x="52" y="57.5" font-family="Helvetica,Arial,sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#2D7A3E">$</text>
 </svg>

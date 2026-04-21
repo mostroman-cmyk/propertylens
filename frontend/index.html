@@ -17,25 +17,26 @@
     <script type="module" src="/src/main.jsx"></script>
     <script>
     (function() {
+      // Bigger house (M4 28 L32 8 L60 28 ...) + larger badge at (52,52)
       function frame(scale) {
         var s = scale.toFixed(3);
-        var t = 'translate(50,50) scale(' + s + ') translate(-50,-50)';
+        var t = 'translate(52,52) scale(' + s + ') translate(-52,-52)';
         return 'data:image/svg+xml,' + encodeURIComponent(
           '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' +
-          '<path d="M8 30 L32 12 L56 30 L56 54 L8 54Z" fill="#000"/>' +
-          '<rect x="27" y="39" width="10" height="15" fill="#fff"/>' +
-          '<rect x="13" y="33" width="9" height="9" rx="1" fill="#fff"/>' +
-          '<rect x="42" y="33" width="9" height="9" rx="1" fill="#fff"/>' +
-          '<circle cx="50" cy="50" r="13" fill="#000" opacity="0.12"/>' +
+          '<path d="M4 28 L32 8 L60 28 L60 56 L4 56Z" fill="#000"/>' +
+          '<rect x="26" y="40" width="12" height="16" fill="#fff"/>' +
+          '<rect x="9" y="32" width="11" height="11" rx="1" fill="#fff"/>' +
+          '<rect x="44" y="32" width="11" height="11" rx="1" fill="#fff"/>' +
+          '<circle cx="52" cy="52" r="14" fill="#000" opacity="0.12"/>' +
           '<g transform="' + t + '">' +
-            '<circle cx="50" cy="50" r="11" fill="#fff" stroke="#000" stroke-width="1.5"/>' +
-            '<text x="50" y="55.5" font-family="Helvetica,Arial,sans-serif" font-size="15" font-weight="bold" text-anchor="middle" fill="#2D7A3E">$</text>' +
+            '<circle cx="52" cy="52" r="12" fill="#fff" stroke="#000" stroke-width="1.5"/>' +
+            '<text x="52" y="57.5" font-family="Helvetica,Arial,sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#2D7A3E">$</text>' +
           '</g></svg>'
         );
       }
 
-      // Pulse: 1.0 → 1.15 → 1.0, then pause. 12 frames × 150ms ≈ 1.8s cycle.
-      var scales = [1, 1.05, 1.10, 1.15, 1.10, 1.05, 1, 1, 1, 1, 1, 1];
+      // 10 frames × 600ms = 6s cycle: 5-frame pulse (1.0→1.08→1.0) + 5-frame rest
+      var scales = [1, 1.04, 1.08, 1.04, 1, 1, 1, 1, 1, 1];
       var frames = scales.map(frame);
 
       var idx = 0, tid = null, stopAt = 0;
@@ -44,25 +45,28 @@
       if (!link) { link = document.createElement('link'); link.rel = 'icon'; link.type = 'image/svg+xml'; document.head.appendChild(link); }
       link.href = frames[0];
 
+      function stop() { clearInterval(tid); tid = null; idx = 0; link.href = frames[0]; }
+
       function start(ms) {
-        if (tid) return;
+        clearInterval(tid); tid = null;
         idx = 0;
-        stopAt = Date.now() + ms;
+        stopAt = Date.now() + (ms || 8000);
         tid = setInterval(function() {
-          if (document.hidden) return;
           idx = (idx + 1) % frames.length;
           link.href = frames[idx];
-          if (Date.now() >= stopAt) {
-            clearInterval(tid); tid = null; idx = 0; link.href = frames[0];
-          }
-        }, 150);
+          if (Date.now() >= stopAt) stop();
+        }, 600);
       }
 
-      // Animate for 6s on first load, 3s when user returns to tab
-      window.addEventListener('load', function() { start(6000); });
+      // Pause immediately when tab hidden; resume with brief pulse when visible again
       document.addEventListener('visibilitychange', function() {
-        if (!document.hidden && !tid) { start(3000); }
+        if (document.hidden) { stop(); }
+        else { start(3000); }
       });
+
+      // Start on load: 9s of animation (1.5 full cycles), then go static
+      if (document.readyState === 'complete') { start(9000); }
+      else { window.addEventListener('load', function() { start(9000); }); }
     })();
     </script>
   </body>
