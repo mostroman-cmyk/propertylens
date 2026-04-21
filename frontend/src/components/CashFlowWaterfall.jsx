@@ -5,9 +5,9 @@ import {
 } from 'recharts';
 import { getDashboardCashFlow } from '../api';
 import { formatMoney } from '../utils/format';
+import { getCategoryColor } from '../utils/categoryColors';
 
-const INCOME_COLOR = '#166534';   // dark green
-const EXPENSE_COLOR = '#CC0000';  // Swiss red
+const INCOME_COLOR = '#2D7A3E';   // deep green (matches Rent color)
 const NET_POS_COLOR = '#000000';  // black
 const NET_NEG_COLOR = '#CC0000';  // red if negative
 
@@ -61,7 +61,7 @@ function buildWaterfallData(cashFlow) {
 function barFill(entry) {
   if (entry.type === 'income') return INCOME_COLOR;
   if (entry.type === 'net') return entry.amount >= 0 ? NET_POS_COLOR : NET_NEG_COLOR;
-  return EXPENSE_COLOR;
+  return getCategoryColor(entry.name);
 }
 
 function CustomTooltip({ active, payload }) {
@@ -106,7 +106,7 @@ function BarAmountLabel({ x, y, width, height, value, index, data }) {
     <text
       x={xPos} y={yPos}
       dominantBaseline="middle"
-      style={{ fontSize: 10, fontFamily: 'monospace', fill: entry.type === 'expense' ? EXPENSE_COLOR : '#333' }}
+      style={{ fontSize: 10, fontFamily: 'monospace', fill: barFill(entry) }}
     >
       {formatMoney(Math.abs(entry.amount), { noCents: true })}
     </text>
@@ -205,7 +205,7 @@ export default function CashFlowWaterfall({ startDate, endDate, periodLabel }) {
               Income {formatMoney(cashFlow.totalIncome, { noCents: true })}
             </div>
             <div style={{ fontSize: 11, color: '#555' }}>
-              <span style={{ color: EXPENSE_COLOR, fontWeight: 700, marginRight: 4 }}>■</span>
+              <span style={{ color: '#CC0000', fontWeight: 700, marginRight: 4 }}>■</span>
               Expenses {formatMoney(cashFlow.totalExpenses, { noCents: true })}
             </div>
             <div style={{ fontSize: 11, color: '#555' }}>

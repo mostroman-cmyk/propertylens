@@ -4,6 +4,8 @@ import { formatMoney, formatDate, formatType } from '../utils/format';
 import EmptyState from '../components/EmptyState';
 import Toast, { useToast } from '../components/Toast';
 import { useSortState, sortRows, TX_COL_DEFS } from '../utils/sort';
+import CategoryPill from '../components/CategoryPill';
+import { getCategoryColor } from '../utils/categoryColors';
 
 const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 
@@ -299,7 +301,14 @@ export default function ReviewClassifications() {
                   ) : (
                     <span
                       onClick={() => setEditingCell({ txId: tx.id, field: 'category' })}
-                      style={{ cursor: 'pointer', textDecoration: 'underline dotted', textUnderlineOffset: 3, color: isUncategorized ? '#E30613' : '#000' }}
+                      style={{
+                        cursor: 'pointer',
+                        display: 'inline-block',
+                        borderLeft: `3px solid ${isUncategorized ? '#E30613' : getCategoryColor(tx.category)}`,
+                        paddingLeft: 6, paddingRight: 7, paddingTop: 2, paddingBottom: 2,
+                        background: '#F5F5F5', borderRadius: '0 3px 3px 0',
+                        fontSize: 11, fontWeight: 500, color: '#222',
+                      }}
                       title="Click to edit"
                     >
                       {tx.category}

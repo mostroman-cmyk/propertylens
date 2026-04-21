@@ -9,6 +9,7 @@ import { formatMoney, formatDate } from '../utils/format';
 import EmptyState from '../components/EmptyState';
 import Modal from '../components/Modal';
 import Toast, { useToast } from '../components/Toast';
+import CategoryPill from '../components/CategoryPill';
 
 const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 
@@ -219,7 +220,7 @@ function BulkFixModal({ group, properties, tenants, onClose, onFixed }) {
       <div style={{ fontSize: 13, color: '#333', padding: '8px 12px', background: '#F5F5F5', borderRadius: 2, marginBottom: 4 }}>
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
           <span><strong>{items.length}</strong> pending prediction{items.length !== 1 ? 's' : ''}</span>
-          {first.predicted_category && <span>Category: <strong>{first.predicted_category}</strong></span>}
+          {first.predicted_category && <span>Category: <CategoryPill category={first.predicted_category} /></span>}
           {(first.predicted_property_name || first.predicted_property_scope === 'portfolio') && (
             <span>Property: <strong>{first.predicted_property_scope === 'portfolio' ? 'All Properties' : first.predicted_property_name}</strong></span>
           )}
@@ -672,9 +673,7 @@ export default function Predictions() {
                   }}>
                     <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, minWidth: 0, flex: '1 1 200px', overflow: 'hidden' }}>
                       {first.predicted_category && (
-                        <span style={{ fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: '0.06em', flexShrink: 0 }}>
-                          {first.predicted_category}
-                        </span>
+                        <CategoryPill category={first.predicted_category} style={{ flexShrink: 0 }} />
                       )}
                       <span style={{ fontSize: 13, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
                             title={first.description}>
@@ -736,7 +735,7 @@ export default function Predictions() {
                               )}
                             </td>
                             <td data-label="Amount" className="num mono">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
-                            <td data-label="→ Category"><PredCell value={tx.predicted_category} /></td>
+                            <td data-label="→ Category">{tx.predicted_category ? <CategoryPill category={tx.predicted_category} /> : <PredCell value={null} />}</td>
                             <td data-label="→ Property"><PredCell value={txPropDisplay} /></td>
                             <td data-label="→ Tenant"><PredCell value={tx.predicted_tenant_name} /></td>
                             <td data-label="Conf"><ConfBadge level={tx.prediction_confidence} /></td>

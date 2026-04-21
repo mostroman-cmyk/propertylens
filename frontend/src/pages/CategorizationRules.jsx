@@ -3,6 +3,7 @@ import { getCategorizationRules, createCategorizationRule, deleteCategorizationR
 import Toast, { useToast } from '../components/Toast';
 import EmptyState from '../components/EmptyState';
 import { formatType } from '../utils/format';
+import CategoryPill from '../components/CategoryPill';
 
 const CATEGORIES = ['Rent', 'Mortgage', 'Utilities', 'Repairs', 'Insurance', 'Maintenance', 'Landscaping', 'Property Tax', 'HOA', 'Legal', 'Professional Services', 'Software', 'Management Fees', 'Supplies', 'Advertising', 'Cleaning', 'Pest Control', 'Other Income', 'Interest Income', 'Other'];
 const EMPTY_FORM = { keyword: '', category: 'Other', type: 'expense', priority: '0', property_scope: 'single' };
@@ -142,7 +143,7 @@ export default function CategorizationRules() {
           {rules.map(rule => (
             <tr key={rule.id}>
               <td data-label="Keyword"><code style={{ background: '#f3f4f6', padding: '2px 6px', borderRadius: 4, fontSize: '0.85rem' }}>{rule.keyword}</code></td>
-              <td data-label="Category">{rule.category}</td>
+              <td data-label="Category"><CategoryPill category={rule.category} /></td>
               <td data-label="Type"><span className={`badge ${rule.type}`}>{formatType(rule.type)}</span></td>
               <td data-label="Scope" style={{ fontSize: 11, color: rule.property_scope === 'portfolio' ? '#444' : '#aaa' }}>
                 {rule.property_scope === 'portfolio' ? '🏘 Portfolio' : 'Single'}

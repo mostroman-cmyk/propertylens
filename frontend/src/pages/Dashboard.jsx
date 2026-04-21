@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import CashFlowWaterfall from '../components/CashFlowWaterfall';
 import ExpenseDonut from '../components/ExpenseDonut';
 import AnomalyCard from '../components/AnomalyCard';
+import CategoryPill from '../components/CategoryPill';
 
 const FILTER_OPTIONS = [
   { key: '7d',         label: '7 Days' },
@@ -610,7 +611,7 @@ export default function Dashboard() {
                   </td>
                   <td className="tx-mobile-sub hide-desktop">
                     <span style={{ color: '#888', fontSize: 12 }}>{formatDate(tx.date)}</span>
-                    {tx.category && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10 }}>{tx.category}</span>}
+                    {tx.category && <CategoryPill category={tx.category} />}
                     {tx.property_name && <span style={{ fontSize: 11, background: '#F3F4F6', padding: '2px 6px', borderRadius: 10, color: '#555' }}>{tx.property_name}</span>}
                     <span className={`badge ${tx.type}`} style={{ fontSize: 11 }}>{formatType(tx.type)}</span>
                   </td>
@@ -620,7 +621,7 @@ export default function Dashboard() {
                   </td>
                   <td className="num mono show-desktop">{formatMoney(Math.abs(parseFloat(tx.amount)))}</td>
                   <td className="nowrap show-desktop"><span className={`badge ${tx.type}`}>{formatType(tx.type)}</span></td>
-                  <td className="nowrap show-desktop" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{tx.category}</td>
+                  <td className="nowrap show-desktop"><CategoryPill category={tx.category} /></td>
                   <td className="show-desktop" style={{ color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 12 }}>
                     {tx.property_scope === 'portfolio'
                       ? <span style={{ fontStyle: 'italic', fontWeight: 600, fontVariant: 'small-caps' }}>All</span>

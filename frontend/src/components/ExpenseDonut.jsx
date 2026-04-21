@@ -4,9 +4,7 @@ import {
 } from 'recharts';
 import { getDashboardExpenses } from '../api';
 import { formatMoney } from '../utils/format';
-
-// Swiss grayscale palette — darkest for largest slice
-const GRAYS = ['#1a1a1a', '#3d3d3d', '#626262', '#8a8a8a', '#b0b0b0', '#d4d4d4'];
+import { getCategoryColor } from '../utils/categoryColors';
 
 function CustomTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -101,10 +99,10 @@ export default function ExpenseDonut({ startDate, endDate }) {
                   onMouseEnter={(_, i) => setActiveIndex(i)}
                   onMouseLeave={() => setActiveIndex(null)}
                 >
-                  {data.categories.map((_, i) => (
+                  {data.categories.map((cat, i) => (
                     <Cell
                       key={i}
-                      fill={GRAYS[i % GRAYS.length]}
+                      fill={getCategoryColor(cat.category)}
                       opacity={activeIndex === null || activeIndex === i ? 1 : 0.35}
                       stroke="none"
                     />
@@ -140,7 +138,7 @@ export default function ExpenseDonut({ startDate, endDate }) {
               >
                 <div style={{
                   width: 10, height: 10, borderRadius: 1, flexShrink: 0,
-                  background: GRAYS[i % GRAYS.length],
+                  background: getCategoryColor(cat.category),
                 }} />
                 <div style={{ flex: 1, fontSize: 11, color: '#333', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {cat.category}
