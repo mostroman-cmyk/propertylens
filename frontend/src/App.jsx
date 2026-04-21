@@ -74,11 +74,9 @@ function MobileNav({ open, onClose }) {
     return () => { document.body.style.overflow = ''; };
   }, [open]);
 
-  if (!open) return null;
-
   return (
-    <div className="mobile-nav-overlay" onClick={onClose}>
-      <nav className="mobile-nav" onClick={e => e.stopPropagation()}>
+    <div className={`mobile-nav-overlay${open ? ' open' : ''}`} onClick={onClose}>
+      <nav className={`mobile-nav${open ? ' open' : ''}`} onClick={e => e.stopPropagation()}>
         <div className="mobile-nav-header">
           <span className="topbar-brand">PROPERTYLENS</span>
           <button className="mobile-nav-close" onClick={onClose} aria-label="Close menu">&#215;</button>

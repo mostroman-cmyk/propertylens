@@ -909,6 +909,14 @@ button,
 
 .mobile-nav-overlay {
   display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  z-index: 299;
+}
+
+.mobile-nav-overlay.open {
+  display: block;
 }
 
 .mobile-nav {
@@ -924,7 +932,11 @@ button,
   overflow-y: auto;
   z-index: 300;
   transform: translateX(-100%);
-  transition: transform 0.22s ease;
+  transition: transform 0.25s ease;
+}
+
+.mobile-nav.open {
+  transform: translateX(0);
 }
 
 .mobile-nav-header {
@@ -992,30 +1004,6 @@ button,
 
 @media (max-width: 1024px) {
   .hamburger { display: flex; }
-
-  .mobile-nav-overlay {
-    display: block;
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.45);
-    z-index: 299;
-    animation: fadeIn 0.18s ease;
-  }
-
-  .mobile-nav {
-    transform: translateX(0);
-    transition: none;
-    animation: slideInNav 0.22s ease;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; }
-    to   { opacity: 1; }
-  }
-  @keyframes slideInNav {
-    from { transform: translateX(-100%); }
-    to   { transform: translateX(0); }
-  }
 
   /* Hide desktop sidebar */
   .sidebar { display: none; }
