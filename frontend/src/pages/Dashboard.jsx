@@ -436,6 +436,12 @@ export default function Dashboard() {
                 of {formatMoney(expectedRentForPeriod, { noCents: true })}
               </span>
             )}
+            <span
+              title="Counts rent matched to tenants by attributed rent month — includes early/late payments outside the period's date range"
+              style={{ fontSize: 9, color: '#999', marginLeft: 4, cursor: 'help', textTransform: 'none', letterSpacing: 0 }}
+            >
+              by rent month ⓘ
+            </span>
           </div>
           <div className="kpi-value">{txLoading ? '…' : formatMoney(collected)}</div>
         </div>

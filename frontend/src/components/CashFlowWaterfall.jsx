@@ -140,10 +140,18 @@ export default function CashFlowWaterfall({ startDate, endDate, periodLabel }) {
   return (
     <div className="dashboard-panel">
       <div className="dashboard-panel-header">
-        <h2 className="section-title" style={{ margin: 0 }}>
-          CASH FLOW
-          {periodLabel && <span style={{ fontWeight: 400, marginLeft: 8, fontSize: 12, color: '#888', textTransform: 'none' }}>— {periodLabel}</span>}
-        </h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 4 }}>
+          <h2 className="section-title" style={{ margin: 0 }}>
+            CASH FLOW
+            {periodLabel && <span style={{ fontWeight: 400, marginLeft: 8, fontSize: 12, color: '#888', textTransform: 'none' }}>— {periodLabel}</span>}
+          </h2>
+          <span
+            title="Income and expenses counted by transaction deposit date — differs from the Collected KPI which attributes payments by rent month"
+            style={{ fontSize: 10, color: '#999', cursor: 'help', alignSelf: 'center' }}
+          >
+            by deposit date ⓘ
+          </span>
+        </div>
       </div>
 
       {loading && <div style={{ color: '#888', fontSize: 13, padding: '20px 0' }}>Loading…</div>}
