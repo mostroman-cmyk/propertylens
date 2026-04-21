@@ -79,7 +79,17 @@ function AuthenticatedApp() {
             <span style={{ display: 'block', width: 22, height: 2, background: '#000', borderRadius: 1 }} />
           </button>
         )}
-        <div style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 11 }}>PROPERTYLENS</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <svg width="16" height="16" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
+            <path d="M8 30 L32 12 L56 30 L56 54 L8 54Z" fill="#000"/>
+            <rect x="27" y="39" width="10" height="15" fill="#fff"/>
+            <rect x="13" y="33" width="9" height="9" rx="1" fill="#fff"/>
+            <rect x="42" y="33" width="9" height="9" rx="1" fill="#fff"/>
+            <circle cx="50" cy="50" r="11" fill="#fff" stroke="#000" strokeWidth="1.5"/>
+            <text x="50" y="55.5" fontFamily="Helvetica,Arial,sans-serif" fontSize="15" fontWeight="bold" textAnchor="middle" fill="#2D7A3E">$</text>
+          </svg>
+          <span style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 12 }}>PROPERTYLENS</span>
+        </div>
         <div style={{ marginLeft: 'auto', fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#666' }}>
           {formatDate(new Date(), 'header')}
         </div>
