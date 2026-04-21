@@ -43,64 +43,45 @@ function TopBar({ onMenuToggle }) {
   );
 }
 
-function MobileNav({ open, onClose }) {
-  // Close on route change
-  const location = useLocation();
-  useEffect(() => { onClose(); }, [location.pathname, onClose]);
-
-  // Swipe to close
-  useEffect(() => {
-    if (!open) return;
-    let startX = null;
-    const onTouchStart = (e) => { startX = e.touches[0].clientX; };
-    const onTouchEnd = (e) => {
-      if (startX === null) return;
-      const dx = e.changedTouches[0].clientX - startX;
-      if (dx < -50) onClose();
-      startX = null;
-    };
-    document.addEventListener('touchstart', onTouchStart, { passive: true });
-    document.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      document.removeEventListener('touchstart', onTouchStart);
-      document.removeEventListener('touchend', onTouchEnd);
-    };
-  }, [open, onClose]);
-
-  // Prevent body scroll when open
-  useEffect(() => {
-    if (open) document.body.style.overflow = 'hidden';
-    else document.body.style.overflow = '';
-    return () => { document.body.style.overflow = ''; };
-  }, [open]);
-
-  return (
-    <div className={`mobile-nav-overlay${open ? ' open' : ''}`} onClick={onClose}>
-      <nav className={`mobile-nav${open ? ' open' : ''}`} onClick={e => e.stopPropagation()}>
-        <div className="mobile-nav-header">
-          <span className="topbar-brand">PROPERTYLENS</span>
-          <button className="mobile-nav-close" onClick={onClose} aria-label="Close menu">&#215;</button>
-        </div>
-        {NAV_LINKS.map(({ to, label, end }) => (
-          <NavLink key={to} to={to} end={end}>{label}</NavLink>
-        ))}
-      </nav>
-    </div>
-  );
-}
-
 function AuthenticatedApp() {
   const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  useEffect(() => { setNavOpen(false); }, [location.pathname]);
+
+  useEffect(() => {
+    document.body.style.overflow = navOpen ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
+  }, [navOpen]);
 
   return (
     <div className="app">
-      <TopBar onMenuToggle={() => setNavOpen(o => !o)} />
+      <TopBar onMenuToggle={() => { console.log('hamburger clicked, navOpen now:', !navOpen); setNavOpen(o => !o); }} />
       <nav className="sidebar">
         {NAV_LINKS.map(({ to, label, end }) => (
           <NavLink key={to} to={to} end={end}>{label}</NavLink>
         ))}
       </nav>
-      <MobileNav open={navOpen} onClose={() => setNavOpen(false)} />
+      {navOpen && (
+        <>
+          <div
+            onClick={() => setNavOpen(false)}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9998 }}
+          />
+          <nav
+            className="mobile-nav"
+            style={{ position: 'fixed', top: 0, left: 0, bottom: 0, width: 260, background: '#fff', borderRight: '1px solid #E5E5E5', display: 'flex', flexDirection: 'column', overflowY: 'auto', zIndex: 9999 }}
+          >
+            <div className="mobile-nav-header">
+              <span className="topbar-brand">PROPERTYLENS</span>
+              <button className="mobile-nav-close" onClick={() => setNavOpen(false)} aria-label="Close menu">&#215;</button>
+            </div>
+            {NAV_LINKS.map(({ to, label, end }) => (
+              <NavLink key={to} to={to} end={end} onClick={() => setNavOpen(false)}>{label}</NavLink>
+            ))}
+          </nav>
+        </>
+      )}
       <main className="content">
         <Routes>
           <Route path="/" element={<Dashboard />} />

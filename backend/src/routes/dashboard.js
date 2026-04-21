@@ -127,8 +127,8 @@ router.get('/anomalies', async (req, res) => {
         WHERE type = 'expense'
           AND normalized_description IS NOT NULL
           AND ABS(amount) > 5
-          AND date >= $1::date - INTERVAL '6 months'
-          AND date <  $1::date
+          AND date::date >= $1::date - INTERVAL '6 months'
+          AND date::date <  $1::date
         GROUP BY normalized_description
         HAVING COUNT(*) >= 3
       ),
@@ -187,8 +187,8 @@ router.get('/anomalies', async (req, res) => {
                  / GREATEST(1, COUNT(DISTINCT DATE_TRUNC('month', date::date))) AS monthly_avg
         FROM transactions
         WHERE type = 'expense'
-          AND date >= $1::date - INTERVAL '6 months'
-          AND date <  $1::date
+          AND date::date >= $1::date - INTERVAL '6 months'
+          AND date::date <  $1::date
         GROUP BY COALESCE(category,'Other')
         HAVING COUNT(DISTINCT DATE_TRUNC('month', date::date)) >= 2
       )
@@ -258,8 +258,8 @@ router.get('/anomalies', async (req, res) => {
         FROM transactions
         WHERE type = 'income'
           AND tenant_id IS NOT NULL
-          AND date >= $1::date - INTERVAL '6 months'
-          AND date <  $1::date
+          AND date::date >= $1::date - INTERVAL '6 months'
+          AND date::date <  $1::date
         GROUP BY tenant_id
         HAVING COUNT(*) >= 2
       )
@@ -293,7 +293,8 @@ router.get('/anomalies', async (req, res) => {
     const top = anomalies.slice(0, 5).map(({ severity, ...rest }) => rest);
     res.json({ anomalies: top, total: anomalies.length });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[dashboard/anomalies] error:', err.message, err.stack);
+    res.json({ anomalies: [], total: 0, error: err.message });
   }
 });
 
