@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { formatDate } from './utils/format';
 import Dashboard from './pages/Dashboard';
 import Properties from './pages/Properties';
 import Tenants from './pages/Tenants';
@@ -31,6 +32,7 @@ function AuthenticatedApp() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
   const location = useLocation();
+  const { logout } = useAuth();
 
   useEffect(() => {
     const check = () => setIsMobile(window.innerWidth < 1024);
@@ -63,34 +65,23 @@ function AuthenticatedApp() {
         {isMobile && (
           <button
             type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              console.log('HAMBURGER CLICKED. menuOpen will be:', !menuOpen);
-              setMenuOpen(prev => !prev);
-            }}
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); setMenuOpen(prev => !prev); }}
             style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 5,
-              padding: 10,
-              marginRight: 8,
-              marginLeft: -10,
-              background: 'transparent',
-              border: 'none',
-              cursor: 'pointer',
-              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5,
+              width: 44, height: 44, padding: 11, marginLeft: -11, marginRight: 4,
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              WebkitTapHighlightColor: 'rgba(0,0,0,0.1)', flexShrink: 0,
             }}
             aria-label="Open menu"
           >
-            <span style={{ display: 'block', width: 22, height: 2, background: '#000' }} />
-            <span style={{ display: 'block', width: 22, height: 2, background: '#000' }} />
-            <span style={{ display: 'block', width: 22, height: 2, background: '#000' }} />
+            <span style={{ display: 'block', width: 22, height: 2, background: '#000', borderRadius: 1 }} />
+            <span style={{ display: 'block', width: 22, height: 2, background: '#000', borderRadius: 1 }} />
+            <span style={{ display: 'block', width: 22, height: 2, background: '#000', borderRadius: 1 }} />
           </button>
         )}
         <div style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 11 }}>PROPERTYLENS</div>
         <div style={{ marginLeft: 'auto', fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#666' }}>
-          {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+          {formatDate(new Date(), 'header')}
         </div>
       </header>
 
@@ -106,45 +97,81 @@ function AuthenticatedApp() {
             }}
           />
           <nav style={{
-            position: 'fixed', top: 0, left: 0, width: 280, height: '100vh',
+            position: 'fixed', top: 0, left: 0,
+            width: 'min(280px, 85vw)',
+            height: '100vh',
             background: 'white',
             zIndex: 9999,
-            paddingTop: 0,
-            boxShadow: '2px 0 12px rgba(0,0,0,0.15)',
+            boxShadow: '2px 0 16px rgba(0,0,0,0.18)',
             overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px 0 24px', height: 52, borderBottom: '1px solid #E5E5E5' }}>
+            {/* Header */}
+            <div style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              padding: '0 12px 0 24px', height: 56, borderBottom: '1px solid #E5E5E5',
+              flexShrink: 0,
+            }}>
               <div style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 11 }}>PROPERTYLENS</div>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}
-                style={{ background: 'none', border: 'none', fontSize: 24, cursor: 'pointer', padding: 4, color: '#666', lineHeight: 1 }}
+                style={{
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: 44, height: 44,
+                  background: 'none', border: 'none', fontSize: 26, cursor: 'pointer',
+                  color: '#333', lineHeight: 1, flexShrink: 0,
+                }}
                 aria-label="Close menu"
               >
                 ×
               </button>
             </div>
-            {NAV_ITEMS.map(item => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setMenuOpen(false)}
+
+            {/* Nav items */}
+            <div style={{ flex: 1 }}>
+              {NAV_ITEMS.map(item => (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMenuOpen(false)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '0 24px',
+                    minHeight: 52,
+                    color: isActive(item.path) ? '#000' : '#444',
+                    fontWeight: isActive(item.path) ? 600 : 400,
+                    textDecoration: 'none',
+                    borderLeft: `3px solid ${isActive(item.path) ? '#000' : 'transparent'}`,
+                    borderBottom: '1px solid #F0F0F0',
+                    fontSize: 15,
+                    letterSpacing: '0.01em',
+                  }}
+                >
+                  {item.label}
+                </Link>
+              ))}
+            </div>
+
+            {/* Logout */}
+            <div style={{ borderTop: '1px solid #E5E5E5', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={() => { setMenuOpen(false); logout(); }}
                 style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '0 24px',
-                  minHeight: 48,
-                  color: isActive(item.path) ? '#000' : '#555',
-                  fontWeight: isActive(item.path) ? 600 : 400,
-                  textDecoration: 'none',
-                  borderLeft: `3px solid ${isActive(item.path) ? '#000' : 'transparent'}`,
-                  borderBottom: '1px solid #F5F5F5',
-                  fontSize: 15,
+                  display: 'flex', alignItems: 'center',
+                  width: '100%', padding: '0 24px', minHeight: 52,
+                  background: 'none', border: 'none', cursor: 'pointer',
+                  color: '#E30613', fontWeight: 500, fontSize: 15,
+                  letterSpacing: '0.01em', textAlign: 'left',
+                  fontFamily: 'inherit',
                 }}
               >
-                {item.label}
-              </Link>
-            ))}
+                Log Out
+              </button>
+            </div>
           </nav>
         </>
       )}
