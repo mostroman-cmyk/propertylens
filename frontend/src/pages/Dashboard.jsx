@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { getTenants, getTransactions, api } from '../api';
+import { getTenants, getTransactions, api, setRentMonth } from '../api';
 import { formatMoney, formatDate, formatType } from '../utils/format';
 import { downloadFilteredTransactionsCSV } from '../utils/export';
 import EmptyState from '../components/EmptyState';
@@ -48,6 +48,11 @@ function currentMonthKey() {
 
 function toYM(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function prevMonth(ym) {
+  const [y, m] = ym.split('-').map(Number);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
 function getDateRange(filterKey, customStart, customEnd) {
@@ -164,6 +169,7 @@ export default function Dashboard() {
   const [customStart, setCustomStart] = useState('');
   const [customEnd, setCustomEnd] = useState('');
   const [showOutstandingTooltip, setShowOutstandingTooltip] = useState(false);
+  const [reassigning, setReassigning] = useState({});
 
   const { startDate, endDate } = getDateRange(dateFilter, customStart, customEnd);
 
@@ -197,6 +203,18 @@ export default function Dashboard() {
   const handleFilterClick = (key) => {
     setDateFilter(key);
     if (key !== 'custom') { setCustomStart(''); setCustomEnd(''); }
+  };
+
+  const handleReassignRentMonth = async (txId, newMonth) => {
+    setReassigning(r => ({ ...r, [txId]: true }));
+    try {
+      await setRentMonth(txId, newMonth);
+      await fetchAll();
+    } catch {
+      // ignore
+    } finally {
+      setReassigning(r => ({ ...r, [txId]: false }));
+    }
   };
 
   const refreshAfterSync = async () => {
@@ -498,7 +516,7 @@ export default function Dashboard() {
 
           <table className="mobile-cards" style={{ tableLayout: 'fixed', width: '100%' }}>
             <colgroup>
-              <col /><col style={{ width: 90 }} /><col style={{ width: 102 }} /><col style={{ width: 76 }} />
+              <col /><col style={{ width: 90 }} /><col style={{ width: 110 }} /><col style={{ width: 130 }} />
             </colgroup>
             <thead>
               <tr>
@@ -519,42 +537,76 @@ export default function Dashboard() {
                   </td>
                 </tr>
               )}
-              {rentStatus.map(({ tenant, paid, paidDate, shortfall }) => (
-                <tr key={tenant.id}>
-                  <td data-label="Tenant">
-                    <a
-                      href={`/transactions?tenant_id=${tenant.id}`}
-                      style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted #ccc' }}
-                      title="View this tenant's transactions"
-                    >
-                      {tenant.name}
-                    </a>
-                  </td>
-                  <td data-label="Rent" className="num mono" style={{ fontSize: 12 }}>
-                    {formatMoney(tenant.monthly_rent, { noCents: true })}
-                  </td>
-                  <td data-label="Paid" className="nowrap" style={{ fontSize: 12, color: '#666' }}>
-                    {paid ? formatDate(paidDate) : '—'}
-                  </td>
-                  <td data-label="Status" className="nowrap">
-                    {!paid ? (
-                      <span className="status-unpaid">● DUE</span>
-                    ) : shortfall > 0 ? (
-                      <span
-                        title={`Paid ${formatMoney(shortfall)} less than expected rent of ${formatMoney(tenant.monthly_rent)}`}
-                        style={{
-                          color: '#B45309', fontWeight: 700, fontSize: 11,
-                          letterSpacing: '0.04em', cursor: 'help',
-                        }}
+              {rentStatus.map(({ tenant, paid, paidDate, shortfall }) => {
+                const candidateTx = !paid
+                  ? allTransactions.find(tx =>
+                      tx.type === 'income' &&
+                      tx.tenant_id === tenant.id &&
+                      tx.rent_month === prevMonth(selectedMonth)
+                    )
+                  : null;
+                return (
+                  <tr key={tenant.id}>
+                    <td data-label="Tenant">
+                      <a
+                        href={`/transactions?tenant_id=${tenant.id}`}
+                        style={{ color: 'inherit', textDecoration: 'none', borderBottom: '1px dotted #ccc' }}
+                        title="View this tenant's transactions"
                       >
-                        ● PAID <span style={{ fontWeight: 400, fontSize: 10 }}>(short {formatMoney(shortfall, { noCents: true })})</span>
-                      </span>
-                    ) : (
-                      <span className="status-paid">● PAID</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                        {tenant.name}
+                      </a>
+                    </td>
+                    <td data-label="Rent" className="num mono" style={{ fontSize: 12 }}>
+                      {formatMoney(tenant.monthly_rent, { noCents: true })}
+                    </td>
+                    <td data-label="Paid" className="nowrap" style={{ fontSize: 12, color: '#666' }}>
+                      {paid ? formatDate(paidDate) : (
+                        <a
+                          href={`/transactions?tenant_id=${tenant.id}`}
+                          style={{ fontSize: 11, color: '#888', textDecoration: 'none', borderBottom: '1px dotted #aaa' }}
+                          title="Go to Transactions to find and fix this payment"
+                        >
+                          Find payment →
+                        </a>
+                      )}
+                    </td>
+                    <td data-label="Status" className="nowrap">
+                      {!paid ? (
+                        <div>
+                          <span className="status-unpaid">● DUE</span>
+                          {candidateTx && (
+                            <button
+                              onClick={() => handleReassignRentMonth(candidateTx.id, selectedMonth)}
+                              disabled={reassigning[candidateTx.id]}
+                              title={`Payment on ${formatDate(candidateTx.date)} is assigned to the previous month — click to move it to ${selectedMonthLabel}`}
+                              style={{
+                                display: 'block', marginTop: 4, fontSize: 10,
+                                padding: '2px 6px', background: '#EEF2FF',
+                                border: '1px solid #818CF8', borderRadius: 3,
+                                color: '#4338CA', cursor: 'pointer', whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {reassigning[candidateTx.id] ? '…' : `Move ${formatDate(candidateTx.date)} here`}
+                            </button>
+                          )}
+                        </div>
+                      ) : shortfall > 0 ? (
+                        <span
+                          title={`Paid ${formatMoney(shortfall)} less than expected rent of ${formatMoney(tenant.monthly_rent)}`}
+                          style={{
+                            color: '#B45309', fontWeight: 700, fontSize: 11,
+                            letterSpacing: '0.04em', cursor: 'help',
+                          }}
+                        >
+                          ● PAID <span style={{ fontWeight: 400, fontSize: 10 }}>(short {formatMoney(shortfall, { noCents: true })})</span>
+                        </span>
+                      ) : (
+                        <span className="status-paid">● PAID</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {activeTenants.length === 0 && (
                 <tr><td colSpan={4} style={{ textAlign: 'center', color: '#888', padding: 24 }}>No active tenants.</td></tr>
               )}

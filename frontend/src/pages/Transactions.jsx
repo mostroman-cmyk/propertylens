@@ -59,7 +59,7 @@ export default function Transactions() {
   const [error, setError] = useState(null);
 
   const [modal, setModal] = useState(null);
-  const [form, setForm] = useState({ category: '', type: '', property_id: '', property_scope: 'single' });
+  const [form, setForm] = useState({ category: '', type: '', property_id: '', property_scope: 'single', rent_month: '' });
   const [saving, setSaving] = useState(false);
   const [modalError, setModalError] = useState(null);
 
@@ -108,7 +108,7 @@ export default function Transactions() {
   }, []);
 
   const openEdit = (tx) => {
-    setForm({ category: tx.category, type: tx.type, property_id: tx.property_id || '', property_scope: tx.property_scope || 'single' });
+    setForm({ category: tx.category, type: tx.type, property_id: tx.property_id || '', property_scope: tx.property_scope || 'single', rent_month: tx.rent_month || '' });
     setModal(tx);
     setModalError(null);
   };
@@ -117,16 +117,33 @@ export default function Transactions() {
     setSaving(true);
     setModalError(null);
     try {
-      const updated = await updateTransaction(modal.id, {
+      let updated = await updateTransaction(modal.id, {
         category: form.category, type: form.type,
         property_id: form.property_scope === 'portfolio' ? null : (form.property_id || null),
         property_scope: form.property_scope,
       });
+      if (form.type === 'income' && modal.tenant_id && form.rent_month !== (modal.rent_month || '')) {
+        updated = await setRentMonth(modal.id, form.rent_month || null);
+      }
       setTransactions(txs => txs.map(t => t.id === modal.id ? updated : t));
       showToast('Transaction updated');
       setModal(null);
     } catch (err) {
       setModalError(err.response?.data?.error || 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleMarkNotRent = async () => {
+    setSaving(true);
+    try {
+      const updated = await assignTenant(modal.id, { tenant_id: null });
+      setTransactions(txs => txs.map(t => t.id === modal.id ? updated : t));
+      showToast('Tenant assignment removed');
+      setModal(null);
+    } catch {
+      setModalError('Failed to remove tenant assignment');
     } finally {
       setSaving(false);
     }
@@ -600,6 +617,32 @@ export default function Transactions() {
               {properties.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
+          {form.type === 'income' && modal.tenant_id && (
+            <div className="form-group">
+              <label>Rent Month</label>
+              <select
+                className="form-input"
+                value={form.rent_month}
+                onChange={e => setForm(f => ({ ...f, rent_month: e.target.value }))}
+              >
+                <option value="">— Not set —</option>
+                {RENT_MONTH_OPTIONS.map(o => <option key={o.val} value={o.val}>{o.label}</option>)}
+              </select>
+              {modal.needs_month_review && (
+                <div style={{ fontSize: 12, color: '#B45309', marginTop: 4 }}>
+                  ⚠ Month was flagged for review — please confirm or adjust
+                </div>
+              )}
+              <button
+                type="button"
+                onClick={handleMarkNotRent}
+                disabled={saving}
+                style={{ marginTop: 8, fontSize: 12, padding: '3px 10px', background: 'none', border: '1px solid #D1D5DB', borderRadius: 3, color: '#6B7280', cursor: 'pointer' }}
+              >
+                Not Rent — remove tenant assignment
+              </button>
+            </div>
+          )}
         </Modal>
       )}
 

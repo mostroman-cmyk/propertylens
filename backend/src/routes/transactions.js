@@ -5,7 +5,7 @@ const { normalizeCategory } = require('../utils/normalizeCategory');
 const { autoMatchAll, learnPattern } = require('../matching/rentMatcher');
 const { bulkCategorize } = require('../categorization/ruleEngine');
 const { backfillPropertyTenant } = require('../matching/backfill');
-const { calculateRentMonth, recalculateRentMonths } = require('../matching/rentMonth');
+const { calculateRentMonth, calculateRentMonthWithHistory, recalculateRentMonths } = require('../matching/rentMonth');
 const { triggerLearnAsync } = require('../prediction/learner');
 
 const SELECT_TX = `
@@ -76,7 +76,7 @@ router.put('/:id/assign-tenant', async (req, res) => {
     const confidence = tenant_id ? 'exact' : null;
     if (tenant_id) {
       const { rows: [tx] } = await db.query('SELECT date FROM transactions WHERE id=$1', [req.params.id]);
-      const { rent_month, needs_month_review } = calculateRentMonth(tx.date);
+      const { rent_month, needs_month_review } = await calculateRentMonthWithHistory(tx.date, tenant_id);
       await db.query(
         `UPDATE transactions
          SET tenant_id=$1, match_confidence=$2, needs_review=false,
