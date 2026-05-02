@@ -19,7 +19,7 @@ async function sendMail({ to, subject, html }) {
   const transporter = getTransporter();
   try {
     const info = await transporter.sendMail({
-      from: `"PropertyLens" <${process.env.GMAIL_USER}>`,
+      from: `"RedPurpleGreen" <${process.env.GMAIL_USER}>`,
       to,
       subject,
       html,

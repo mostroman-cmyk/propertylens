@@ -1,5 +1,5 @@
 /**
- * PropertyLens Export Utilities
+ * RedPurpleGreen Export Utilities
  * Generates CSV, PDF, Excel, and Tax Package ZIP exports.
  */
 
@@ -214,7 +214,7 @@ export function buildCSV({ plData, transactions, tenants, year }) {
 export function downloadCSV({ plData, transactions, tenants, year }) {
   const csv = buildCSV({ plData, transactions, tenants, year });
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `PropertyLens_${year}_Full_Report.csv`);
+  saveAs(blob, `RedPurpleGreen_${year}_Full_Report.csv`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -241,7 +241,7 @@ function addPDFFooters(doc, year) {
     doc.setDrawColor(...PDF_LGRAY);
     doc.line(PDF_MARGIN, H - 32, W - PDF_MARGIN, H - 32);
     doc.text(
-      `PropertyLens  |  Page ${i} of ${totalPages}  |  Generated ${generatedStr()}`,
+      `RedPurpleGreen  |  Page ${i} of ${totalPages}  |  Generated ${generatedStr()}`,
       W / 2, H - 20, { align: 'center' }
     );
   }
@@ -277,7 +277,7 @@ export function buildPDF({ plData, transactions, tenants, year }) {
   doc.setFontSize(11);
   doc.setTextColor(255, 255, 255);
   doc.setCharSpace(3);
-  doc.text('PROPERTYLENS', PDF_MARGIN, 38);
+  doc.text('REDPURPLEGREEN', PDF_MARGIN, 38);
   doc.setCharSpace(0);
 
   // Title
@@ -494,7 +494,7 @@ export function buildPDF({ plData, transactions, tenants, year }) {
 
 export function downloadPDF({ plData, transactions, tenants, year }) {
   const blob = buildPDF({ plData, transactions, tenants, year });
-  saveAs(blob, `PropertyLens_${year}_Report.pdf`);
+  saveAs(blob, `RedPurpleGreen_${year}_Report.pdf`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -549,7 +549,7 @@ export function buildExcel({ plData, transactions, tenants, year }) {
   // ── Sheet 1: Summary ──────────────────────────────────────────────────────
 
   const summaryData = [
-    [`PropertyLens Annual Report — ${year}`],
+    [`RedPurpleGreen Annual Report — ${year}`],
     [`Generated: ${generatedStr()}`],
     [],
     ['Metric', 'Amount'],
@@ -680,7 +680,7 @@ export function buildExcel({ plData, transactions, tenants, year }) {
 export function downloadExcel({ plData, transactions, tenants, year }) {
   const buf = buildExcel({ plData, transactions, tenants, year });
   const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
-  saveAs(blob, `PropertyLens_${year}_Report.xlsx`);
+  saveAs(blob, `RedPurpleGreen_${year}_Report.xlsx`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -738,10 +738,10 @@ function buildReadme({ plData, year }) {
   const { properties } = plData;
   const propList = properties.map(p => `  - ${p.name}`).join('\n');
   return [
-    `PropertyLens Tax Package — Tax Year ${year}`,
+    `RedPurpleGreen Tax Package — Tax Year ${year}`,
     `Generated: ${generatedStr()}`,
     '',
-    `This package was exported from PropertyLens and contains Schedule E-ready data`,
+    `This package was exported from RedPurpleGreen and contains Schedule E-ready data`,
     `for ${properties.length} rental propert${properties.length === 1 ? 'y' : 'ies'} for tax year ${year}.`,
     '',
     'PROPERTIES:',
@@ -756,7 +756,7 @@ function buildReadme({ plData, year }) {
     '                            Includes date, description, amount, category,',
     '                            property, and tenant for every transaction.',
     '',
-    '  PropertyLens_Report.pdf — Full financial report including P&L by property,',
+    '  RedPurpleGreen_Report.pdf — Full financial report including P&L by property,',
     '                            category breakdown, tenant history, and transaction ledger.',
     '',
     'INSTRUCTIONS FOR CPA:',
@@ -767,7 +767,7 @@ function buildReadme({ plData, year }) {
     '  5. Mortgage interest shown is from bank transactions. Verify against 1098 forms.',
     '  6. If any property has portfolio-wide expenses, those are allocated proportionally.',
     '',
-    `PropertyLens | propertylens.app | ${generatedStr()}`,
+    `RedPurpleGreen | redpurplegreen.app | ${generatedStr()}`,
   ].join('\n');
 }
 
@@ -798,13 +798,13 @@ export async function downloadTaxPackage({ plData, transactions, tenants, year }
 
   // Full PDF report
   const pdfBlob = buildPDF({ plData, transactions, tenants, year });
-  zip.file('PropertyLens_Report.pdf', pdfBlob);
+  zip.file('RedPurpleGreen_Report.pdf', pdfBlob);
 
   // README
   zip.file('README.txt', buildReadme({ plData, year }));
 
   const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
-  saveAs(zipBlob, `PropertyLens_${year}_Tax_Package.zip`);
+  saveAs(zipBlob, `RedPurpleGreen_${year}_Tax_Package.zip`);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -828,5 +828,5 @@ export function downloadFilteredTransactionsCSV(transactions, label = 'transacti
     ]));
   }
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  saveAs(blob, `PropertyLens_${label}_${new Date().toISOString().substring(0, 10)}.csv`);
+  saveAs(blob, `RedPurpleGreen_${label}_${new Date().toISOString().substring(0, 10)}.csv`);
 }

@@ -1,6 +1,6 @@
 const { Pool } = require('pg');
 
-const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/propertylens';
+const DATABASE_URL = process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/redpurplegreen';
 
 const sslConfig = process.env.DATABASE_URL ? { rejectUnauthorized: false } : false;
 

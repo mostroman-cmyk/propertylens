@@ -6,31 +6,36 @@
     <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#000000" />
+    <meta name="application-name" content="RedPurpleGreen" />
+    <meta name="description" content="Property management and financial tracking for rental portfolios." />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="PropertyLens" />
-    <title>PropertyLens</title>
+    <meta name="apple-mobile-web-app-title" content="RedPurpleGreen" />
+    <meta property="og:title" content="RedPurpleGreen" />
+    <meta property="og:description" content="Property management and financial tracking for rental portfolios." />
+    <meta property="og:type" content="website" />
+    <title>RedPurpleGreen</title>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
     <script>
     (function() {
-      // Bigger house (M4 28 L32 8 L60 28 ...) + larger badge at (52,52)
+      // Tri-color house: red | purple | green — pulse scales from center
       function frame(scale) {
         var s = scale.toFixed(3);
-        var t = 'translate(52,52) scale(' + s + ') translate(-52,-52)';
+        var t = 'translate(32,32) scale(' + s + ') translate(-32,-32)';
         return 'data:image/svg+xml,' + encodeURIComponent(
           '<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">' +
-          '<path d="M4 28 L32 8 L60 28 L60 56 L4 56Z" fill="#000"/>' +
+          '<defs><clipPath id="h"><path d="M4 28 L32 8 L60 28 L60 56 L4 56Z"/></clipPath></defs>' +
+          '<g transform="' + t + '">' +
+          '<rect x="0" y="0" width="21" height="64" fill="#E30613" clip-path="url(#h)"/>' +
+          '<rect x="21" y="0" width="22" height="64" fill="#6B3FA0" clip-path="url(#h)"/>' +
+          '<rect x="43" y="0" width="21" height="64" fill="#2D7A3E" clip-path="url(#h)"/>' +
           '<rect x="26" y="40" width="12" height="16" fill="#fff"/>' +
           '<rect x="9" y="32" width="11" height="11" rx="1" fill="#fff"/>' +
           '<rect x="44" y="32" width="11" height="11" rx="1" fill="#fff"/>' +
-          '<circle cx="52" cy="52" r="14" fill="#000" opacity="0.12"/>' +
-          '<g transform="' + t + '">' +
-            '<circle cx="52" cy="52" r="12" fill="#fff" stroke="#000" stroke-width="1.5"/>' +
-            '<text x="52" y="57.5" font-family="Helvetica,Arial,sans-serif" font-size="16" font-weight="bold" text-anchor="middle" fill="#2D7A3E">$</text>' +
           '</g></svg>'
         );
       }

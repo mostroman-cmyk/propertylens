@@ -1,5 +1,5 @@
 {
-  "name": "propertylens",
+  "name": "redpurplegreen",
   "version": "1.0.0",
   "scripts": {
     "start": "node backend/src/index.js",

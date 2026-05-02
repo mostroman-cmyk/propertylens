@@ -35,7 +35,7 @@ app.use(express.json());
 app.use(cookieParser());
 
 // Public endpoints — no auth required
-app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'PropertyLens API' }));
+app.get('/api/health', (req, res) => res.json({ status: 'ok', service: 'RedPurpleGreen API' }));
 app.use('/api/auth', authRouter);
 
 // All remaining /api/* routes require a valid JWT cookie
@@ -60,7 +60,7 @@ app.get('*', (req, res) => {
 
 async function start() {
   app.listen(PORT, () => {
-    console.log(`PropertyLens backend running on port ${PORT}`);
+    console.log(`RedPurpleGreen backend running on port ${PORT}`);
   });
 
   try {

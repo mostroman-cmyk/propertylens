@@ -2,7 +2,7 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/propertylens',
+  connectionString: process.env.DATABASE_URL || 'postgresql://postgres:password@localhost:5432/redpurplegreen',
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
 });
 

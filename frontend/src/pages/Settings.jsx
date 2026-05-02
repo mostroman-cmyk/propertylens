@@ -923,7 +923,7 @@ export default function Settings() {
       {/* ── SECTION: ACCOUNT ── */}
       <div className="settings-section">
         <div className="settings-section-title">Account</div>
-        <p className="settings-section-desc">You are signed in to PropertyLens.</p>
+        <p className="settings-section-desc">You are signed in to RedPurpleGreen.</p>
         <button
           className="btn-secondary"
           style={{ borderColor: '#E30613', color: '#E30613' }}

@@ -8,8 +8,8 @@ const { syncAll, syncOne } = require('../plaid/sync');
 router.post('/create-link-token', async (req, res) => {
   try {
     const response = await plaidClient.linkTokenCreate({
-      user: { client_user_id: 'propertylens-user' },
-      client_name: 'PropertyLens',
+      user: { client_user_id: 'redpurplegreen-user' },
+      client_name: 'RedPurpleGreen',
       products: [Products.Transactions],
       country_codes: [CountryCode.Us],
       language: 'en',

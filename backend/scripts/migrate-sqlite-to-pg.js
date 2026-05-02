@@ -12,7 +12,7 @@ const Database = require('better-sqlite3');
 const { Pool }  = require('pg');
 const path      = require('path');
 
-const SQLITE_PATH = path.join(__dirname, '../propertylens.db');
+const SQLITE_PATH = path.join(__dirname, '../redpurplegreen.db');
 const PG_URL      = process.env.DATABASE_URL;
 
 if (!PG_URL) {

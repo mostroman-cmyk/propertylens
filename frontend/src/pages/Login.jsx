@@ -35,7 +35,7 @@ export default function Login() {
           fontSize: 13, letterSpacing: '0.15em', textTransform: 'uppercase',
           color: '#000', marginBottom: 32, textAlign: 'center',
         }}>
-          PROPERTYLENS
+          REDPURPLEGREEN
         </div>
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>

@@ -81,14 +81,19 @@ function AuthenticatedApp() {
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
           <svg width="18" height="18" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-            <path d="M4 28 L32 8 L60 28 L60 56 L4 56Z" fill="#000"/>
+            <defs>
+              <clipPath id="rpg-house">
+                <path d="M4 28 L32 8 L60 28 L60 56 L4 56Z"/>
+              </clipPath>
+            </defs>
+            <rect x="0" y="0" width="21" height="64" fill="#E30613" clipPath="url(#rpg-house)"/>
+            <rect x="21" y="0" width="22" height="64" fill="#6B3FA0" clipPath="url(#rpg-house)"/>
+            <rect x="43" y="0" width="21" height="64" fill="#2D7A3E" clipPath="url(#rpg-house)"/>
             <rect x="26" y="40" width="12" height="16" fill="#fff"/>
             <rect x="9" y="32" width="11" height="11" rx="1" fill="#fff"/>
             <rect x="44" y="32" width="11" height="11" rx="1" fill="#fff"/>
-            <circle cx="52" cy="52" r="12" fill="#fff" stroke="#000" strokeWidth="1.5"/>
-            <text x="52" y="57.5" fontFamily="Helvetica,Arial,sans-serif" fontSize="16" fontWeight="bold" textAnchor="middle" fill="#2D7A3E">$</text>
           </svg>
-          <span style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 12 }}>PROPERTYLENS</span>
+          <span style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 12 }}>REDPURPLEGREEN</span>
         </div>
         <div style={{ marginLeft: 'auto', fontFamily: 'IBM Plex Mono, monospace', fontSize: 11, color: '#666' }}>
           {formatDate(new Date(), 'header')}
@@ -123,7 +128,7 @@ function AuthenticatedApp() {
               padding: '0 12px 0 24px', height: 56, borderBottom: '1px solid #E5E5E5',
               flexShrink: 0,
             }}>
-              <div style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 11 }}>PROPERTYLENS</div>
+              <div style={{ fontWeight: 700, letterSpacing: '0.18em', fontSize: 11 }}>REDPURPLEGREEN</div>
               <button
                 type="button"
                 onClick={() => setMenuOpen(false)}

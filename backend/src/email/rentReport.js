@@ -46,7 +46,7 @@ function buildHtml({ month, year, paid, unpaid, totalCollected, totalExpected })
 
     <!-- Header -->
     <div style="background:#1a1f36;padding:28px 32px;">
-      <div style="color:#7c8ef7;font-size:1rem;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;">PROPERTYLENS</div>
+      <div style="color:#7c8ef7;font-size:1rem;font-weight:700;letter-spacing:0.05em;margin-bottom:4px;">REDPURPLEGREEN</div>
       <div style="color:#fff;font-size:1.5rem;font-weight:700;">Rent Status &mdash; ${monthName} ${year}</div>
     </div>
 
@@ -115,13 +115,13 @@ function buildHtml({ month, year, paid, unpaid, totalCollected, totalExpected })
     <div style="padding:24px 32px;text-align:center;border-top:1px solid #e5e7eb;">
       <a href="${process.env.FRONTEND_URL || 'http://localhost:5173'}"
          style="display:inline-block;background:#7c8ef7;color:#fff;text-decoration:none;font-weight:700;font-size:0.95rem;padding:14px 32px;border-radius:8px;letter-spacing:0.02em;">
-        Open PropertyLens Dashboard
+        Open RedPurpleGreen Dashboard
       </a>
     </div>
 
     <!-- Footer -->
     <div style="background:#f5f6fa;padding:16px 32px;text-align:center;color:#aaa;font-size:0.78rem;border-top:1px solid #e5e7eb;">
-      Sent by PropertyLens &bull; ${new Date().toLocaleString()}
+      Sent by RedPurpleGreen &bull; ${new Date().toLocaleString()}
     </div>
   </div>
 </body>
@@ -195,7 +195,7 @@ async function sendRentReport({ month, year } = {}) {
 
   await sendMail({
     to: notifyEmail,
-    subject: `PropertyLens — Rent Status for ${new Date(year, month - 1).toLocaleString('default', { month: 'long' })} ${year}`,
+    subject: `RedPurpleGreen — Rent Status for ${new Date(year, month - 1).toLocaleString('default', { month: 'long' })} ${year}`,
     html,
   });
 
