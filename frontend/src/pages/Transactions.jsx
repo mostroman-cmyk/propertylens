@@ -69,6 +69,7 @@ export default function Transactions() {
   const [learnPattern, setLearnPattern] = useState(false);
 
   const [ruleModal, setRuleModal] = useState(null);
+  const [confirmReApply, setConfirmReApply] = useState(false);
 
   const [contextMenu, setContextMenu] = useState(null);
   const contextMenuRef = useRef(null);
@@ -306,7 +307,7 @@ export default function Transactions() {
           <button className="btn-secondary" onClick={handleAutoMatch}>Auto-Match Rent</button>
           <button className="btn-secondary" onClick={handleBackfill}>Auto-Fill Property &amp; Tenant</button>
           <button className="btn-secondary" onClick={() => handleBulkCategorize(false)}>Apply Rules</button>
-          <button className="btn-secondary" onClick={() => handleBulkCategorize(true)}>Re-Apply All</button>
+          <button className="btn-secondary" onClick={() => setConfirmReApply(true)}>Re-Apply All</button>
           {ambiguousAssignedCount > 0 && (
             <button className="btn-warning" onClick={handleResetAmbiguous}>
               Reset Ambiguous Tenant Assignments
@@ -714,6 +715,19 @@ export default function Transactions() {
               </select>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {confirmReApply && (
+        <Modal
+          title="Re-Apply All Rules"
+          onClose={() => setConfirmReApply(false)}
+          onSave={() => { setConfirmReApply(false); handleBulkCategorize(true); }}
+          saveLabel="Yes, re-apply to all"
+        >
+          <p style={{ margin: 0, fontSize: 14 }}>
+            This will re-run categorization rules on <strong>all {transactions.length} transactions</strong>, including ones you've manually categorized. Existing manual edits will be overwritten wherever a rule matches.
+          </p>
         </Modal>
       )}
 

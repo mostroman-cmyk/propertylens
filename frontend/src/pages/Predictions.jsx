@@ -497,6 +497,7 @@ export default function Predictions() {
   const [loading, setLoading]           = useState(true);
   const [running, setRunning]           = useState(false);
   const [accepting, setAccepting]       = useState(false);
+  const [confirmAcceptAll, setConfirmAcceptAll] = useState(false);
   const [bulkAccepting, setBulkAccepting] = useState(null);
   const [editModal, setEditModal]       = useState(null);
   const [fixModal, setFixModal]         = useState(null);
@@ -616,7 +617,7 @@ export default function Predictions() {
             {running ? 'Running...' : 'Re-train & Re-predict'}
           </button>
           {highCount > 0 && (
-            <button className="btn-primary" onClick={handleAcceptAllHigh} disabled={accepting}>
+            <button className="btn-primary" onClick={() => setConfirmAcceptAll(true)} disabled={accepting}>
               {accepting ? 'Accepting...' : `Accept All HIGH (${highCount})`}
             </button>
           )}
@@ -837,6 +838,20 @@ export default function Predictions() {
             reload();
           }}
         />
+      )}
+
+      {confirmAcceptAll && (
+        <Modal
+          title={`Accept All HIGH (${highCount})`}
+          onClose={() => setConfirmAcceptAll(false)}
+          onSave={() => { setConfirmAcceptAll(false); handleAcceptAllHigh(); }}
+          saveLabel={`Accept ${highCount} prediction${highCount !== 1 ? 's' : ''}`}
+          saving={accepting}
+        >
+          <p style={{ margin: 0, fontSize: 14 }}>
+            This will apply <strong>{highCount} HIGH-confidence prediction{highCount !== 1 ? 's' : ''}</strong> to your transactions, overwriting any existing category, property, and tenant assignments on those transactions.
+          </p>
+        </Modal>
       )}
 
       <ActivityLog activity={activity} />

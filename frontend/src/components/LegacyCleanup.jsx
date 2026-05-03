@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from '../api';
+import Modal from './Modal';
 
 export default function LegacyCleanup({ showToast }) {
   const [stats, setStats] = useState(null);
@@ -14,6 +15,7 @@ export default function LegacyCleanup({ showToast }) {
   const [selectedAccount, setSelectedAccount] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const [processing, setProcessing] = useState(null); // 'assign'|'delete'|'resync'|'quickfix'
+  const [confirmQuickFix, setConfirmQuickFix] = useState(false);
 
   const fetchStats = useCallback(async () => {
     setLoadingStats(true);
@@ -126,12 +128,25 @@ export default function LegacyCleanup({ showToast }) {
         </p>
         <button
           className="btn-primary"
-          onClick={handleQuickFix}
+          onClick={() => setConfirmQuickFix(true)}
           disabled={busy}
           style={{ fontSize: 13 }}
         >
           {processing === 'quickfix' ? 'Working…' : `Delete ${stats.count} legacy + Re-sync from Plaid`}
         </button>
+
+        {confirmQuickFix && (
+          <Modal
+            title="Delete Legacy + Re-sync from Plaid"
+            onClose={() => setConfirmQuickFix(false)}
+            onSave={() => { setConfirmQuickFix(false); handleQuickFix(); }}
+            saveLabel={`Delete ${stats.count} + Re-sync`}
+          >
+            <p style={{ margin: 0, fontSize: 14 }}>
+              This will permanently delete <strong>{stats.count} legacy transaction{stats.count !== 1 ? 's' : ''}</strong> and re-import fresh from Plaid. Any manual categorization or tenant assignments on these transactions will be lost.
+            </p>
+          </Modal>
+        )}
       </div>
 
       {expanded && (
