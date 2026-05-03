@@ -161,7 +161,6 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [txLoading, setTxLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [fullResyncing, setFullResyncing] = useState(false);
   const [syncResult, setSyncResult] = useState(null);
   const [error, setError] = useState(null);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey);
@@ -222,29 +221,6 @@ export default function Dashboard() {
     if (startDate) params.startDate = startDate;
     if (endDate) params.endDate = endDate;
     await Promise.all([fetchFiltered(params), fetchAll()]);
-  };
-
-  const handleFullResync = async () => {
-    setFullResyncing(true);
-    setSyncResult(null);
-    try {
-      const { data } = await api.post('/plaid/full-resync-all');
-      await refreshAfterSync();
-      let msg, type;
-      if (data.errors?.length) {
-        const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
-        msg = `Full re-sync: imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''}. Error — ${detail}`;
-        type = 'warn';
-      } else {
-        msg = `Full re-sync complete — imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''} from full history.`;
-        type = 'success';
-      }
-      setSyncResult({ message: msg, type });
-    } catch (err) {
-      setSyncResult({ message: err.response?.data?.error || 'Full re-sync failed.', type: 'error' });
-    } finally {
-      setFullResyncing(false);
-    }
   };
 
   const handleSync = async () => {
@@ -368,7 +344,7 @@ export default function Dashboard() {
       <div className="page-header">
         <h1 className="page-title">Dashboard</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <button className="btn-secondary" onClick={handleSync} disabled={syncing || fullResyncing}>
+          <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
             {syncing ? 'Syncing...' : 'Sync Transactions'}
           </button>
           <button
@@ -378,9 +354,6 @@ export default function Dashboard() {
             title={`Export ${transactions.length} transactions for the current period`}
           >
             Export Period CSV
-          </button>
-          <button className="btn-primary" onClick={handleFullResync} disabled={syncing || fullResyncing} title="Clear saved sync position and re-import all available history from Plaid (up to 24 months)">
-            {fullResyncing ? 'Importing history...' : 'Full Re-Sync (Pull Complete History)'}
           </button>
         </div>
       </div>

@@ -69,8 +69,11 @@ export default function Settings() {
   const [accountConfirm, setAccountConfirm] = useState(null);
   const [cleaningUp, setCleaningUp] = useState(false);
 
-  // Full re-sync state
+  // Full re-sync state (per-connection)
   const [fullResync, setFullResync] = useState(null);
+
+  // Full re-sync all connections state
+  const [fullResyncAll, setFullResyncAll] = useState(null); // null | 'confirm' | 'working'
 
   // Reconnect state
   const [reconnectConnId, setReconnectConnId] = useState(null);
@@ -283,6 +286,27 @@ export default function Settings() {
     } catch (err) {
       showToast(err.response?.data?.error || 'Full re-sync failed');
       setFullResync(null);
+    }
+  };
+
+  const handleFullResyncAll = async () => {
+    setFullResyncAll('working');
+    try {
+      const { data } = await api.post('/plaid/full-resync-all');
+      let msg;
+      if (data.errors?.length) {
+        const detail = data.errors.map(e => `${e.institution}: ${e.error}`).join(' | ');
+        msg = `Full re-sync: imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''}. Error — ${detail}`;
+        setSyncResult({ message: msg, type: 'warn' });
+      } else {
+        msg = `Full re-sync complete — imported ${data.synced} transaction${data.synced !== 1 ? 's' : ''} from full history.`;
+        setSyncResult({ message: msg, type: 'success' });
+      }
+      await fetchConnections();
+    } catch (err) {
+      setSyncResult({ message: err.response?.data?.error || 'Full re-sync failed.', type: 'error' });
+    } finally {
+      setFullResyncAll(null);
     }
   };
 
@@ -568,10 +592,40 @@ export default function Settings() {
 
         <div style={{ display: 'flex', gap: 8, marginBottom: 20 }}>
           <ConnectBank onSuccess={handleBankConnected} />
-          <button className="btn-secondary" onClick={handleSync} disabled={syncing}>
+          <button className="btn-secondary" onClick={handleSync} disabled={syncing || !!fullResyncAll}>
             {syncing ? 'Syncing...' : 'Sync All'}
           </button>
+          <button
+            className="btn-secondary"
+            onClick={() => setFullResyncAll('confirm')}
+            disabled={syncing || !!fullResyncAll || connections.length === 0}
+            title="Clear saved sync position and re-import all available history from Plaid across all connections"
+          >
+            Full Re-Sync All
+          </button>
         </div>
+
+        {fullResyncAll === 'confirm' && (
+          <div style={{ border: '1px solid #E30613', borderRadius: 2, padding: '16px 20px', marginBottom: 20, background: '#FFF5F5' }}>
+            <div style={{ fontWeight: 600, marginBottom: 8 }}>Full Re-Sync All Connections</div>
+            <p style={{ fontSize: 13, color: '#555', margin: '0 0 12px' }}>
+              This will clear the saved sync position for every connected bank and re-import all available history from Plaid (up to 24 months).
+              Are you sure you want to continue?
+            </p>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button className="btn-primary" style={{ background: '#E30613', borderColor: '#E30613' }} onClick={handleFullResyncAll}>
+                Yes, re-sync all
+              </button>
+              <button className="btn-edit" onClick={() => setFullResyncAll(null)}>Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {fullResyncAll === 'working' && (
+          <div style={{ padding: '12px 16px', background: '#FAFAFA', border: '1px solid #E5E5E5', borderRadius: 2, marginBottom: 20, fontSize: 13, color: '#555' }}>
+            Syncing full history from Plaid across all connections — this may take a few minutes...
+          </div>
+        )}
 
         {reconnectStatus && (
           <div className="alert alert-success" style={{ marginBottom: 16 }}>
